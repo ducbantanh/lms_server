@@ -1,0 +1,9 @@
+# Profile dev: tiện cho test local. KHÔNG dùng khi triển khai thật.
+app:
+  bootstrap:
+    admin-password: ${APP_ADMIN_PASSWORD:admin12345}
+    create-demo-student: true
+
+spring:
+  jpa:
+    show-sql: false

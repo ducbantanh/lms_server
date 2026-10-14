@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dev Console</title>
+  <!-- Trang test cho backend. Xóa khi frontend thật đã sẵn sàng. Không dùng CDN. -->
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; color: #222; }
+    section { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+    input, textarea, button { font: inherit; margin: 4px 0; }
+    textarea { width: 100%; min-height: 90px; }
+    pre { background: #111; color: #9f9; padding: 12px; border-radius: 6px; max-height: 320px; overflow: auto; font-size: 12px; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border-bottom: 1px solid #eee; padding: 4px 8px; text-align: left; }
+  </style>
+</head>
+<body>
+  <h1>Dev Console</h1>
+
+  <section>
+    <h2>Auth</h2>
+    <input id="u" placeholder="username" value="admin">
+    <input id="p" placeholder="password" type="password">
+    <button onclick="login()">Login</button>
+    <button onclick="me()">Me</button>
+    <button onclick="logout()">Logout</button>
+    <div>
+      <input id="oldp" placeholder="current password" type="password">
+      <input id="newp" placeholder="new password" type="password">
+      <button onclick="changePw()">Change password</button>
+    </div>
+    <div id="who"></div>
+  </section>
+
+  <section>
+    <h2>WebSocket</h2>
+    <button onclick="connectWs()">Connect</button>
+    <button onclick="ws && ws.close()">Disconnect</button>
+    <span id="wsState">closed</span>
+  </section>
+
+  <section>
+    <h2>Admin: users</h2>
+    <button onclick="loadUsers()">Load users</button>
+    <button onclick="loadPresence()">Presence</button>
+    <table id="users"></table>
+    <h3>Import (student_id|ddmmyyyy|Full name)</h3>
+    <textarea id="imp"># ví dụ
+B21DCCN001|01012003|Nguyễn Văn A
+B21DCCN002|15022003|Trần Thị B</textarea>
+    <button onclick="importUsers()">Import</button>
+  </section>
+
+  <pre id="log"></pre>
+
+<script>
+  let csrf = null;
+  let ws = null;
+  const $ = (id) => document.getElementById(id);
+  const log = (label, obj) => {
+    $('log').textContent = `[${new Date().toLocaleTimeString()}] ${label}\n${JSON.stringify(obj, null, 2)}\n\n` + $('log').textContent;
+  };
+
+  async function api(method, path, body) {
+    const headers = { 'Accept': 'application/json' };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (csrf && method !== 'GET') headers['X-CSRF-Token'] = csrf;
+    const res = await fetch('/api/v1' + path, {
+      method, headers, credentials: 'same-origin',
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const json = await res.json().catch(() => ({ success: false, error: { code: 'NO_JSON' } }));
+    log(`${method} ${path} -> ${res.status}`, json);
+    return json;
+  }
+
+  function setSession(r) {
+    if (r.success) {
+      csrf = r.data.csrfToken;
+      const u = r.data.user;
+      $('who').textContent = `${u.username} (${u.roleName}=${u.role})` + (u.mustChangePassword ? ' — MUST CHANGE PASSWORD' : '');
+    } else {
+      csrf = null;
+      $('who').textContent = 'not logged in';
+    }
+  }
+
+  async function login() { setSession(await api('POST', '/auth/login', { username: $('u').value, password: $('p').value })); }
+  async function me() { setSession(await api('GET', '/auth/me')); }
+  async function logout() { await api('POST', '/auth/logout'); setSession({ success: false }); }
+  async function changePw() { await api('POST', '/auth/change-password', { currentPassword: $('oldp').value, newPassword: $('newp').value }); me(); }
+
+  function connectWs() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws`);
+    $('wsState').textContent = 'connecting';
+    ws.onopen = () => { $('wsState').textContent = 'open'; ws.send(JSON.stringify({ type: 'ping' })); };
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      log('WS ' + msg.type, msg);
+      if (msg.type === 'session.revoked') { setSession({ success: false }); alert('Session revoked: ' + msg.data.reason); }
+      if (msg.type === 'presence.changed') loadPresence();
+    };
+    ws.onclose = (e) => { $('wsState').textContent = `closed (${e.code})`; };
+  }
+
+  async function loadUsers() {
+    const r = await api('GET', '/admin/users?size=50');
+    if (!r.success) return;
+    $('users').innerHTML = '<tr><th>username</th><th>name</th><th>role</th><th>status</th><th></th></tr>';
+    for (const u of r.data.items) {
+      const tr = document.createElement('tr');
+      [u.username, u.fullName, u.roleName, u.status ? 'active' : 'locked'].forEach(t => {
+        const td = document.createElement('td'); td.textContent = t; tr.appendChild(td);
+      });
+      const td = document.createElement('td');
+      for (const [label, fn] of [
+        ['kick', () => api('POST', `/admin/users/${u.id}/force-logout`)],
+        [u.status ? 'lock' : 'unlock', () => api('POST', `/admin/users/${u.id}/${u.status ? 'lock' : 'unlock'}`).then(loadUsers)],
+        ['delete', () => confirm('Delete ' + u.username + '?') && api('DELETE', `/admin/users/${u.id}`).then(loadUsers)]
+      ]) {
+        const b = document.createElement('button'); b.textContent = label; b.onclick = fn; td.appendChild(b);
+      }
+      tr.appendChild(td);
+      $('users').appendChild(tr);
+    }
+  }
+
+  function loadPresence() { return api('GET', '/admin/presence'); }
+  async function importUsers() { await api('POST', '/admin/users/import', { content: $('imp').value }); loadUsers(); }
+
+  me();
+</script>
+</body>
+</html>

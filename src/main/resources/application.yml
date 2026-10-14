@@ -1,0 +1,84 @@
+# Cấu hình chung. Giá trị bí mật/riêng máy đặt trong file .env (xem .env.example).
+spring:
+  application:
+    name: lms-server
+  config:
+    # Đọc .env ở thư mục chạy app (nếu có) như một file properties
+    import: optional:file:.env[.properties]
+  profiles:
+    active: ${APP_PROFILE:dev}
+
+  datasource:
+    url: ${APP_DB_URL:jdbc:mysql://localhost:3306/lms?useUnicode=true&characterEncoding=utf8&connectionTimeZone=UTC}
+    username: ${APP_DB_USER:lms}
+    password: ${APP_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+
+  jpa:
+    open-in-view: false
+    # Flyway là nơi DUY NHẤT tạo/sửa schema
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  servlet:
+    multipart:
+      max-file-size: 512KB
+      max-request-size: 600KB
+
+  web:
+    resources:
+      # Frontend tĩnh (AdminLTE / Next export) đặt trong src/main/resources/static
+      static-locations: classpath:/static/
+
+server:
+  address: ${APP_HOST:0.0.0.0}
+  port: ${APP_PORT:8080}
+  # 'native' khi chạy sau Nginx/Caddy để lấy đúng IP client
+  forward-headers-strategy: ${APP_FORWARD_HEADERS:none}
+  error:
+    include-stacktrace: never
+    include-message: never
+    whitelabel:
+      enabled: false
+  tomcat:
+    max-swallow-size: 1MB
+
+app:
+  session:
+    cookie-name: SID
+    idle-timeout: 2h
+    absolute-timeout: 12h
+    secure-cookie: ${APP_SECURE_COOKIE:false}
+    same-site: Lax
+  security:
+    bcrypt-strength: 10
+    login-max-attempts: 5
+    login-lock-duration: 5m
+    password-min-length: 8
+  student-import:
+    max-lines: 1000
+    max-bytes: 262144
+  ws:
+    path: /ws
+    # Để trống = chỉ cho phép same-origin
+    allowed-origins: ${APP_WS_ALLOWED_ORIGINS:}
+  bootstrap:
+    admin-username: ${APP_ADMIN_USERNAME:admin}
+    # Để trống -> server sinh mật khẩu ngẫu nhiên và in ra log MỘT lần khi tạo admin
+    admin-password: ${APP_ADMIN_PASSWORD:}
+    admin-full-name: System Administrator
+    create-demo-student: false
+
+logging:
+  level:
+    root: INFO
+    lms: DEBUG

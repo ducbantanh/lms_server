@@ -1,0 +1,14 @@
+# Profile prod: chạy sau reverse proxy (Nginx/Caddy) có HTTPS.
+server:
+  address: ${APP_HOST:127.0.0.1}
+  forward-headers-strategy: ${APP_FORWARD_HEADERS:native}
+
+app:
+  session:
+    secure-cookie: ${APP_SECURE_COOKIE:true}
+  bootstrap:
+    create-demo-student: false
+
+logging:
+  level:
+    lms: INFO
