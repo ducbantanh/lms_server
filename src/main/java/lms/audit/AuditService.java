@@ -23,6 +23,8 @@ public class AuditService {
     public static final String USER_DELETED = "user.deleted";
     public static final String USERS_IMPORTED = "user.imported";
     public static final String FORCE_LOGOUT = "session.force_logout";
+    public static final String COURSE_CREATED = "course.created";
+    public static final String COURSE_DELETED = "course.deleted";
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 

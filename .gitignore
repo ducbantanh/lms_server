@@ -5,3 +5,5 @@ target/
 *.iml
 .vscode/
 .DS_Store
+# Tài liệu khóa học do server lưu (app.storage.dir)
+data/

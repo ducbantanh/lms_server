@@ -31,7 +31,11 @@ Mở http://localhost:8080/dev-console.html để test nhanh khi chưa có front
 | Tài khoản (profile dev) | Mật khẩu |
 |---|---|
 | `admin` | `admin12345` (hoặc giá trị `APP_ADMIN_PASSWORD`) |
-| `student01` | `student12345` |
+| `student01` | `student12345` (được ghi danh 6 khóa học demo) |
+| `teacher01`, `teacher02` | `teacher12345` (giảng viên demo, phụ trách các khóa học demo) |
+
+Khóa học demo do `lms.course.DemoCourseInitializer` tạo một lần khi DB chưa có khóa học nào
+(`app.bootstrap.create-demo-courses`, chỉ bật ở profile dev).
 
 Ở profile prod, nếu `APP_ADMIN_PASSWORD` để trống, server tự sinh mật khẩu admin ngẫu nhiên và in ra log **một lần duy nhất**.
 
@@ -50,9 +54,10 @@ src/main/java/lms/
 ├── user/              P4  User, AdminUserController, UserAdminService
 │   └── importing/     P4  StudentImportParser (Java thuần), StudentImportService
 ├── audit/             P1  AuditService, AuditController
-└── student/           P6  API dashboard sinh viên
+├── course/                Khóa học: mục/tuần, tài liệu (FileStorage), bài kiểm tra, ghi danh, /teacher/**, /files/**
+└── student/           P6  API sinh viên: dashboard, nội dung khóa học, tham gia bằng mã
 src/main/resources/
-├── db/migration/      P1  V1__core_schema.sql, V2__seed_roles_permissions.sql
+├── db/migration/      P1  V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học
 └── static/            P5, P6  frontend build (AdminLTE / Next export) đặt ở đây
 ```
 
@@ -109,7 +114,22 @@ Frontend hiển thị thông báo dựa vào `error.code`. Không hiển thị `
 | POST | `/admin/users/import-file` | `users.manage` | multipart, field `file` (.txt UTF-8) |
 | GET | `/admin/presence` | `presence.view` | Danh sách user đang online |
 | GET | `/admin/audit?page=&size=` | `audit.view` | Audit log |
-| GET | `/student/dashboard` | `courses.view` | Profile + khóa học (giai đoạn 2) |
+| GET | `/student/dashboard` | `courses.view` | Profile + khóa học đã ghi danh `{id, code, title, teacherName}` |
+| GET | `/student/courses/{id}` | `courses.view` | Nội dung khóa học đã ghi danh; không có file bị ẩn và đề của bài chưa mở |
+| POST | `/student/courses/join` | `courses.view` | `{key}`: tự ghi danh bằng mã tham gia; sai mã → `INVALID_ENROLL_KEY` |
+| GET | `/files/{id}` | `courses.view` | Tải tài liệu; PDF trả inline, DOCX/PPTX tải về; kiểm tra quyền mỗi lần tải |
+| GET, POST | `/teacher/courses` | `courses.manage` | Danh sách khóa học mình phụ trách (admin: tất cả); tạo `{code, title, description, format}` |
+| GET, DELETE | `/teacher/courses/{id}` | `courses.manage` | Chi tiết `{course, sections, files, assessments}`; xóa cả file trên đĩa |
+| POST, DELETE | `/teacher/courses/{id}/sections[/{sectionId}]` | `courses.manage` | Thêm `{title}` / xóa mục (file trong mục chuyển về "chưa phân mục") |
+| POST | `/teacher/courses/{id}/files` | `courses.manage` | multipart `file` + `sectionId?` + `hidden`; chỉ PDF/DOCX/PPTX ≤ 20 MB |
+| PATCH, DELETE | `/teacher/courses/{id}/files/{fileId}` | `courses.manage` | `{hidden}` ẩn/hiện; xóa tài liệu |
+| GET | `/teacher/students?q=` | `courses.manage` | Tìm tài khoản sinh viên để ghi danh |
+| GET | `/teacher/courses/{id}/students` | `courses.manage` | Danh sách ghi danh kèm cách thêm (`method` 0 dán, 1 chọn, 2 mã) |
+| POST | `/teacher/courses/{id}/students/paste` | `courses.manage` | `{content}`: MSSV ngăn bởi xuống dòng, dấu phẩy, chấm phẩy hoặc khoảng trắng |
+| POST | `/teacher/courses/{id}/students` | `courses.manage` | `{userIds}`: ghi danh theo danh sách đã chọn |
+| DELETE | `/teacher/courses/{id}/students/{userId}` | `courses.manage` | Bỏ ghi danh |
+| POST, DELETE | `/teacher/courses/{id}/enroll-key` | `courses.manage` | Tạo mã mới (mã cũ hết hiệu lực) / tắt mã |
+| POST, DELETE | `/teacher/courses/{id}/assessments[/{assessmentId}]` | `courses.manage` | Tạo `{type, title, description, paperFileId, opensAt, closesAt}` / xóa; bài thi bắt buộc có đề PDF và đề tự bị ẩn |
 
 **Định dạng import:** mỗi dòng `student_id|ddmmyyyy|Full name`. Dòng trống và dòng bắt đầu bằng `#` bị bỏ qua. Kết quả trả về chia 3 nhóm:
 
@@ -165,4 +185,5 @@ Nginx cần chuyển tiếp header `Upgrade` và `Connection` cho `/ws`, và đ�
 - [ ] P5/P6: build frontend vào `src/main/resources/static/` rồi xóa `dev-console.html`.
 - [ ] Integration test với Testcontainers MySQL (login, revoke, permission boundary).
 - [ ] Rate limit cho endpoint import.
-- [ ] Giai đoạn 2: module `courses/`, `content/`, `submissions/`.
+- [x] Giai đoạn 2: module `course/` (V4): khóa học, mục/tuần, tài liệu, bài kiểm tra, ghi danh 3 cách.
+- [ ] Giai đoạn 3: `submissions/`: sinh viên nộp bài, giảng viên chấm và nhận xét.
