@@ -3,6 +3,8 @@ app:
   bootstrap:
     admin-password: ${APP_ADMIN_PASSWORD:admin12345}
     create-demo-student: true
+    # Giảng viên teacher01/teacher02 (mật khẩu teacher12345) + 6 khóa học, ghi danh student01
+    create-demo-courses: true
 
 spring:
   jpa:

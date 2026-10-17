@@ -10,6 +10,7 @@ public final class Permissions {
     public static final String PRESENCE_VIEW = "presence.view";
     public static final String AUDIT_VIEW = "audit.view";
     public static final String COURSES_VIEW = "courses.view";
+    public static final String COURSES_MANAGE = "courses.manage";
     public static final String SUBMISSIONS_CREATE = "submissions.create";
     public static final String SUBMISSIONS_MANAGE = "submissions.manage";
 
