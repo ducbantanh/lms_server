@@ -31,8 +31,9 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: 512KB
-      max-request-size: 600KB
+      # Tài liệu khóa học tối đa 20 MB (app.storage.max-file-bytes); import sinh viên tự giới hạn 256 KB
+      max-file-size: 20MB
+      max-request-size: 21MB
 
   web:
     resources:
@@ -50,7 +51,7 @@ server:
     whitelabel:
       enabled: false
   tomcat:
-    max-swallow-size: 1MB
+    max-swallow-size: 21MB
 
 app:
   session:
@@ -71,6 +72,10 @@ app:
     path: /ws
     # Để trống = chỉ cho phép same-origin
     allowed-origins: ${APP_WS_ALLOWED_ORIGINS:}
+  storage:
+    # Thư mục lưu tài liệu khóa học (tương đối với thư mục chạy server)
+    dir: ${APP_STORAGE_DIR:data/files}
+    max-file-bytes: 20971520
   bootstrap:
     admin-username: ${APP_ADMIN_USERNAME:admin}
     # Để trống -> server sinh mật khẩu ngẫu nhiên và in ra log MỘT lần khi tạo admin
