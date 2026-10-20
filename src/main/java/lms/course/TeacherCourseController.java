@@ -25,6 +25,7 @@ import lms.auth.RequirePermission;
 import lms.common.ApiResponse;
 import lms.common.RequestInfo;
 import lms.course.CourseViews.AssessmentRequest;
+import lms.course.CourseViews.AssignTeacherRequest;
 import lms.course.CourseViews.AssessmentUpdateRequest;
 import lms.course.CourseViews.AssessmentView;
 import lms.course.CourseViews.CourseDetail;
@@ -66,10 +67,27 @@ public class TeacherCourseController {
         return ApiResponse.ok(courses.listManaged(me));
     }
 
+    /** Chỉ admin: tạo khóa học kèm giảng viên phụ trách (giảng viên không tự tạo khóa học). */
     @PostMapping("/courses")
+    @RequirePermission(Permissions.COURSES_ASSIGN)
     public ApiResponse<CourseView> create(@Valid @RequestBody CreateCourseRequest body, AuthPrincipal me,
             HttpServletRequest req) {
         return ApiResponse.ok(courses.create(body, me, RequestInfo.clientIp(req)));
+    }
+
+    /** Chỉ admin: đổi giảng viên phụ trách. */
+    @PutMapping("/courses/{id}/teacher")
+    @RequirePermission(Permissions.COURSES_ASSIGN)
+    public ApiResponse<CourseView> assignTeacher(@PathVariable String id,
+            @Valid @RequestBody AssignTeacherRequest body, AuthPrincipal me) {
+        return ApiResponse.ok(courses.assignTeacher(id, body.teacherId(), me));
+    }
+
+    /** Chỉ admin: giảng viên đang hoạt động để chọn khi tạo/phân công khóa học. */
+    @GetMapping("/teachers")
+    @RequirePermission(Permissions.COURSES_ASSIGN)
+    public ApiResponse<List<UserPick>> searchTeachers(@RequestParam(required = false) String q) {
+        return ApiResponse.ok(courses.searchTeachers(q));
     }
 
     @GetMapping("/courses/{id}")
@@ -83,7 +101,9 @@ public class TeacherCourseController {
         return ApiResponse.ok(courses.update(id, body, me));
     }
 
+    /** Chỉ admin: xóa khóa học (kéo theo toàn bộ nội dung, bài nộp, ghi danh). */
     @DeleteMapping("/courses/{id}")
+    @RequirePermission(Permissions.COURSES_ASSIGN)
     public ApiResponse<Void> delete(@PathVariable String id, AuthPrincipal me, HttpServletRequest req) {
         courses.delete(id, me, RequestInfo.clientIp(req));
         return ApiResponse.ok();

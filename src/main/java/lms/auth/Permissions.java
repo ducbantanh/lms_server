@@ -11,6 +11,8 @@ public final class Permissions {
     public static final String AUDIT_VIEW = "audit.view";
     public static final String COURSES_VIEW = "courses.view";
     public static final String COURSES_MANAGE = "courses.manage";
+    /** Tạo/xóa khóa học và phân công giảng viên phụ trách (chỉ admin). */
+    public static final String COURSES_ASSIGN = "courses.assign";
     public static final String SUBMISSIONS_CREATE = "submissions.create";
     public static final String SUBMISSIONS_MANAGE = "submissions.manage";
 

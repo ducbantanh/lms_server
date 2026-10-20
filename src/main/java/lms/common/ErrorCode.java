@@ -22,6 +22,14 @@ public enum ErrorCode {
     PAYLOAD_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "Payload too large"),
     UNSUPPORTED_FILE_TYPE(HttpStatus.BAD_REQUEST, "Unsupported file type"),
     INVALID_ENROLL_KEY(HttpStatus.BAD_REQUEST, "Invalid enroll key"),
+    /** Nội dung, bài, chấm điểm, thông báo: chỉ giảng viên phụ trách; admin chỉ xem. */
+    TEACHER_ONLY(HttpStatus.FORBIDDEN, "Only the course teacher can do this"),
+    /** Giảng viên được chọn không tồn tại, không phải giảng viên hoặc đã bị khóa. */
+    INVALID_TEACHER(HttpStatus.BAD_REQUEST, "Teacher not found or inactive"),
+    /** Đổi mã đăng nhập sang mã đã có người dùng (không phân biệt hoa thường). */
+    USERNAME_TAKEN(HttpStatus.CONFLICT, "Username already exists"),
+    /** Đặt lại mật khẩu về ngày sinh nhưng tài khoản chưa có ngày sinh. */
+    BIRTH_DATE_REQUIRED(HttpStatus.BAD_REQUEST, "Birth date is required"),
     ASSESSMENT_CLOSED(HttpStatus.CONFLICT, "A finished exam cannot be changed or deleted"),
     /** Thứ tự gửi lên không khớp danh sách hiện tại (tab khác vừa thêm/xóa): tải lại rồi làm lại. */
     STALE_ORDER(HttpStatus.CONFLICT, "Order does not match current items"),

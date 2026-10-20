@@ -106,6 +106,11 @@ public class User {
         return username;
     }
 
+    /** Admin sửa mã đăng nhập (MSSV/mã GV) khi nhập sai; phiên đang có vẫn giữ vì session gắn theo id. */
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
     public String getFullName() {
         return fullName;
     }

@@ -92,6 +92,23 @@ public class CourseService {
         return c;
     }
 
+    /**
+     * Chỉ giảng viên phụ trách (nội dung, bài tập/thực hành/kiểm tra, chấm điểm, thông báo).
+     * Admin vẫn xem được qua requireManaged nhưng ở đây nhận TEACHER_ONLY: tách người quản trị khỏi người dạy,
+     * điểm và đề chỉ do giảng viên phụ trách làm. Cần thay người thì admin đổi giảng viên phụ trách.
+     */
+    public Course requireTeaching(String publicId, AuthPrincipal me) {
+        Course c = requireManaged(publicId, me);
+        if (!isTeacherOf(c, me)) {
+            throw new AppException(ErrorCode.TEACHER_ONLY);
+        }
+        return c;
+    }
+
+    public static boolean isTeacherOf(Course c, AuthPrincipal me) {
+        return c.getTeacher() != null && c.getTeacher().getId() == me.userId();
+    }
+
     public boolean canView(Course c, AuthPrincipal me) {
         return c.isManagedBy(me.userId(), me.role() == Role.ADMIN)
                 || enrollments.existsByCourseIdAndUserId(c.getId(), me.userId());
@@ -108,15 +125,43 @@ public class CourseService {
         return list.stream().map(c -> summary(c, counts.getOrDefault(c.getId(), 0L))).toList();
     }
 
+    /** Chỉ admin (courses.assign): tạo khóa học và phân công giảng viên phụ trách. */
     @Transactional
     public CourseView create(CreateCourseRequest req, AuthPrincipal me, String ip) {
-        User teacher = users.findById(me.userId()).orElseThrow(() -> AppException.notFound("User"));
+        User teacher = requireTeacher(req.teacherId());
         Course c = new Course(req.code().trim(), req.title().trim(), teacher);
         c.setDescription(blankToNull(req.description()));
         c.setFormat(req.format());
         courses.save(c);
-        audit.record(me.userId(), AuditService.COURSE_CREATED, c.getCode(), c.getTitle(), ip);
+        audit.record(me.userId(), AuditService.COURSE_CREATED, c.getCode(),
+                c.getTitle() + " · giảng viên " + teacher.getUsername(), ip);
         return view(c, false, 0);
+    }
+
+    /** Chỉ admin (courses.assign): đổi giảng viên phụ trách; giảng viên cũ mất quyền quản lý khóa học. */
+    @Transactional
+    public CourseView assignTeacher(String publicId, String teacherId, AuthPrincipal me) {
+        Course c = requireManaged(publicId, me);
+        User teacher = requireTeacher(teacherId);
+        String before = c.getTeacher() == null ? "(chưa có)" : c.getTeacher().getUsername();
+        c.setTeacher(teacher);
+        audit.record(me.userId(), AuditService.COURSE_ASSIGNED, c.getCode(), before + " → " + teacher.getUsername());
+        return view(c, false, enrollments.countByCourseId(c.getId()));
+    }
+
+    /** Giảng viên đang hoạt động để chọn khi tạo/phân công khóa học (50 kết quả đầu theo mã). */
+    @Transactional(readOnly = true)
+    public List<UserPick> searchTeachers(String q) {
+        String needle = q == null || q.isBlank() ? null : q.trim();
+        return users.search(needle, Role.TEACHER, User.STATUS_ACTIVE, PageRequest.of(0, 50, Sort.by("username")))
+                .stream()
+                .map(u -> new UserPick(u.getPublicId(), u.getUsername(), u.getFullName())).toList();
+    }
+
+    private User requireTeacher(String publicId) {
+        return users.findByPublicId(publicId)
+                .filter(u -> u.getRole() == Role.TEACHER && u.isActive())
+                .orElseThrow(() -> new AppException(ErrorCode.INVALID_TEACHER));
     }
 
     /** Sửa mã, tên, mô tả; đổi dạng chỉ giữa "mục tự đặt tên" và "theo tuần" (dạng chỉ tài liệu không có mục/bài). */
@@ -352,7 +397,9 @@ public class CourseService {
 
     private static CourseView view(Course c, boolean studentView, long studentCount) {
         return new CourseView(c.getPublicId(), c.getCode(), c.getTitle(), c.getDescription(), c.getFormat(),
-                studentView ? null : c.getEnrollKey(), studentCount, teacherName(c), c.getCreatedAt());
+                studentView ? null : c.getEnrollKey(), studentCount,
+                studentView || c.getTeacher() == null ? null : c.getTeacher().getPublicId(), teacherName(c),
+                c.getCreatedAt());
     }
 
     private static String teacherName(Course c) {

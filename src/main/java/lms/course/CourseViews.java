@@ -26,8 +26,9 @@ public final class CourseViews {
     }
 
     /** enrollKey luôn null ở góc nhìn sinh viên. */
+    /** enrollKey, teacherId luôn null ở góc nhìn sinh viên; teacherId null = chưa phân công. */
     public record CourseView(String id, String code, String title, String description, int format,
-            String enrollKey, long studentCount, String teacherName, Instant createdAt) {
+            String enrollKey, long studentCount, String teacherId, String teacherName, Instant createdAt) {
     }
 
     public record SectionView(String id, int position, String title) {
@@ -67,11 +68,17 @@ public final class CourseViews {
 
     // ---------------------------------------------------------------- request
 
+    /** Admin tạo khóa học và phân công luôn giảng viên phụ trách (public id, phải là giảng viên đang hoạt động). */
     public record CreateCourseRequest(
             @NotBlank @Size(max = 32) String code,
             @NotBlank @Size(max = 200) String title,
             @Size(max = 2000) String description,
-            @Min(0) @Max(2) int format) {
+            @Min(0) @Max(2) int format,
+            @NotBlank String teacherId) {
+    }
+
+    /** Đổi giảng viên phụ trách. */
+    public record AssignTeacherRequest(@NotBlank String teacherId) {
     }
 
     /** Sửa thông tin khóa học; format chỉ đổi được giữa 0 và 1. */

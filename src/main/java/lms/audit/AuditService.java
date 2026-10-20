@@ -27,10 +27,13 @@ public class AuditService {
     public static final String USER_LOCKED = "user.locked";
     public static final String USER_UNLOCKED = "user.unlocked";
     public static final String USER_DELETED = "user.deleted";
+    public static final String USER_UPDATED = "user.updated";
+    public static final String PASSWORD_RESET = "user.password_reset";
     public static final String USERS_IMPORTED = "user.imported";
     public static final String FORCE_LOGOUT = "session.force_logout";
     public static final String COURSE_CREATED = "course.created";
     public static final String COURSE_UPDATED = "course.updated";
+    public static final String COURSE_ASSIGNED = "course.assigned";
     public static final String COURSE_DELETED = "course.deleted";
     public static final String SECTION_CREATED = "section.created";
     public static final String SECTION_UPDATED = "section.updated";

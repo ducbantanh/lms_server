@@ -56,8 +56,9 @@ public final class SubmissionViews {
     public record SubmissionSummary(int students, int submitted, int graded, BigDecimal average) {
     }
 
+    /** canGrade: người xem là giảng viên phụ trách (admin chỉ xem, không chấm). */
     public record AssessmentSubmissions(CourseRef course, AssessmentView assessment, SubmissionSummary summary,
-            List<SubmissionRow> rows) {
+            List<SubmissionRow> rows, boolean canGrade) {
     }
 
     /** score null = xóa điểm và nhận xét. */

@@ -36,6 +36,7 @@ import lms.user.UserRepository;
 
 /**
  * Giảng viên xem bài nộp của một bài và chấm điểm thủ công (thang 10 + nhận xét).
+ * Admin xem được danh sách bài nộp nhưng chỉ giảng viên phụ trách mới chấm (TEACHER_ONLY).
  * Chỉ chấm bài đã chốt: đã bấm nộp, hết giờ tự tính bài nộp, hoặc hết giờ không nộp (chấm 0 được).
  * Khóa học không thuộc quyền quản lý trả NOT_FOUND như các API giảng viên khác.
  */
@@ -86,14 +87,14 @@ public class GradingService {
             return row(a, u, byUser.get(u.getId()), filesBySubmission, graders, now);
         }).toList();
         return new AssessmentSubmissions(new CourseRef(c.getPublicId(), c.getCode(), c.getTitle()),
-                teacherView(a, now), summary(rows), rows);
+                teacherView(a, now), summary(rows), rows, CourseService.isTeacherOf(c, me));
     }
 
     /** Chấm (score khác null) hoặc xóa điểm (score null) của một sinh viên; trả về dòng đã cập nhật. */
     @Transactional
     public SubmissionRow grade(String courseId, String assessmentId, String studentId, GradeRequest req,
             AuthPrincipal me, String ip) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         Assessment a = requireAssessment(c, assessmentId);
         User student = users.findByPublicId(studentId)
                 .filter(u -> enrollments.existsByCourseIdAndUserId(c.getId(), u.getId()))
