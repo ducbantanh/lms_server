@@ -1,6 +1,7 @@
 package lms.student;
 
 import java.util.List;
+import java.util.Map;
 
 import jakarta.validation.Valid;
 
@@ -20,6 +21,9 @@ import lms.course.CourseRepository;
 import lms.course.CourseService;
 import lms.course.CourseViews;
 import lms.course.CourseViews.JoinRequest;
+import lms.progress.ProgressService;
+import lms.progress.ProgressViews.CourseProgress;
+import lms.progress.ProgressViews.NextLesson;
 
 /**
  * API sinh viên: dashboard (profile + khóa học đã ghi danh), xem nội dung khóa học, tham gia bằng mã.
@@ -32,8 +36,12 @@ public class StudentController {
     public record Profile(String id, String username, String fullName) {
     }
 
-    /** Khớp model client (lms_client/lib/use-courses.ts): id, code, title, teacherName. */
-    public record CourseSummary(String id, String code, String title, String teacherName) {
+    /**
+     * Khớp model client (lms_client/lib/use-courses.ts). progress là phần trăm (null khi chưa có gì để tính),
+     * nextLesson là bài học đầu tiên chưa học.
+     */
+    public record CourseSummary(String id, String code, String title, String teacherName, Integer progress,
+            NextLesson nextLesson) {
     }
 
     public record Dashboard(Profile profile, List<CourseSummary> courses) {
@@ -41,17 +49,21 @@ public class StudentController {
 
     private final CourseRepository courses;
     private final CourseService courseService;
+    private final ProgressService progress;
 
-    public StudentController(CourseRepository courses, CourseService courseService) {
+    public StudentController(CourseRepository courses, CourseService courseService, ProgressService progress) {
         this.courses = courses;
         this.courseService = courseService;
+        this.progress = progress;
     }
 
     @GetMapping("/dashboard")
     public ApiResponse<Dashboard> dashboard(AuthPrincipal me) {
         Profile profile = new Profile(me.publicId(), me.username(), me.fullName());
-        List<CourseSummary> enrolled = courses.findEnrolledBy(me.userId()).stream()
-                .map(StudentController::summary)
+        List<Course> list = courses.findEnrolledBy(me.userId());
+        Map<Long, CourseProgress> byCourse = progress.forCourses(me.userId(), list);
+        List<CourseSummary> enrolled = list.stream()
+                .map(c -> summary(c, byCourse.get(c.getId())))
                 .toList();
         return ApiResponse.ok(new Dashboard(profile, enrolled));
     }
@@ -67,8 +79,8 @@ public class StudentController {
         return ApiResponse.ok(courseService.join(body.key(), me));
     }
 
-    private static CourseSummary summary(Course c) {
+    private static CourseSummary summary(Course c, CourseProgress p) {
         String teacher = c.getTeacher() == null ? null : c.getTeacher().getFullName();
-        return new CourseSummary(c.getPublicId(), c.getCode(), c.getTitle(), teacher);
+        return new CourseSummary(c.getPublicId(), c.getCode(), c.getTitle(), teacher, p.percent(), p.nextLesson());
     }
 }

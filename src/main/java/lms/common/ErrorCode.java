@@ -22,6 +22,12 @@ public enum ErrorCode {
     PAYLOAD_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "Payload too large"),
     UNSUPPORTED_FILE_TYPE(HttpStatus.BAD_REQUEST, "Unsupported file type"),
     INVALID_ENROLL_KEY(HttpStatus.BAD_REQUEST, "Invalid enroll key"),
+    ASSESSMENT_CLOSED(HttpStatus.CONFLICT, "A finished exam cannot be changed or deleted"),
+    /** Thứ tự gửi lên không khớp danh sách hiện tại (tab khác vừa thêm/xóa): tải lại rồi làm lại. */
+    STALE_ORDER(HttpStatus.CONFLICT, "Order does not match current items"),
+    ASSESSMENT_NOT_OPEN(HttpStatus.CONFLICT, "Assessment is not open yet"),
+    SUBMISSION_LOCKED(HttpStatus.CONFLICT, "Submission already submitted or time is over"),
+    SUBMISSION_NOT_FINAL(HttpStatus.CONFLICT, "Submission is still in progress"),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
 
     private final HttpStatus status;

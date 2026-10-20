@@ -41,4 +41,25 @@ class AssessmentTest {
     void closedAfterClosesAt() {
         assertEquals("closed", at(NOW.minus(HOUR.multipliedBy(2)), NOW.minus(HOUR)).statusAt(NOW));
     }
+
+    private static Assessment exam(Instant opens, Instant closes) {
+        return new Assessment(1L, Assessment.TYPE_EXAM, "Thi", null, 1L, opens, closes);
+    }
+
+    @Test
+    void finishedExamCannotBeDeleted() {
+        assertFalse(exam(NOW.minus(HOUR.multipliedBy(2)), NOW.minus(HOUR)).isDeletable(NOW));
+    }
+
+    @Test
+    void examBeforeOrDuringWindowCanBeDeleted() {
+        assertTrue(exam(NOW.plus(HOUR), NOW.plus(HOUR.multipliedBy(2))).isDeletable(NOW));
+        assertTrue(exam(NOW.minus(HOUR), NOW.plus(HOUR)).isDeletable(NOW));
+        assertTrue(exam(null, null).isDeletable(NOW));
+    }
+
+    @Test
+    void closedPracticeCanStillBeDeleted() {
+        assertTrue(at(NOW.minus(HOUR.multipliedBy(2)), NOW.minus(HOUR)).isDeletable(NOW));
+    }
 }

@@ -6,9 +6,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+import lms.common.RequestInfo;
 
 /**
- * Ghi audit log cho thao tác quan trọng (login, admin action).
+ * Ghi audit log cho mọi thao tác thay đổi dữ liệu (login, admin, giảng viên, nộp bài).
+ * Không ghi trạng thái cá nhân như đánh dấu đã học, đã đọc thông báo.
+ * Quy ước: target là đối tượng chính (username, mã khóa học), detail là mô tả ngắn.
  * KHÔNG ghi mật khẩu, cookie, token vào detail.
  */
 @Service
@@ -24,7 +30,35 @@ public class AuditService {
     public static final String USERS_IMPORTED = "user.imported";
     public static final String FORCE_LOGOUT = "session.force_logout";
     public static final String COURSE_CREATED = "course.created";
+    public static final String COURSE_UPDATED = "course.updated";
     public static final String COURSE_DELETED = "course.deleted";
+    public static final String SECTION_CREATED = "section.created";
+    public static final String SECTION_UPDATED = "section.updated";
+    public static final String SECTION_DELETED = "section.deleted";
+    public static final String SECTIONS_REORDERED = "section.reordered";
+    public static final String LESSON_CREATED = "lesson.created";
+    public static final String LESSON_UPDATED = "lesson.updated";
+    public static final String LESSON_DELETED = "lesson.deleted";
+    public static final String LESSONS_REORDERED = "lesson.reordered";
+    public static final String FILE_UPLOADED = "file.uploaded";
+    public static final String FILE_HIDDEN = "file.hidden";
+    public static final String FILE_SHOWN = "file.shown";
+    public static final String FILE_DELETED = "file.deleted";
+    public static final String ASSESSMENT_CREATED = "assessment.created";
+    public static final String ASSESSMENT_UPDATED = "assessment.updated";
+    public static final String ASSESSMENT_DELETED = "assessment.deleted";
+    public static final String STUDENTS_ENROLLED = "enrollment.added";
+    public static final String STUDENT_UNENROLLED = "enrollment.removed";
+    public static final String COURSE_JOINED = "enrollment.joined";
+    public static final String ENROLL_KEY_CREATED = "enrollment.key_created";
+    public static final String ENROLL_KEY_DISABLED = "enrollment.key_disabled";
+    public static final String NOTIFICATION_SENT = "notification.sent";
+    public static final String SUBMISSION_FILE_ADDED = "submission.file_added";
+    public static final String SUBMISSION_FILE_REMOVED = "submission.file_removed";
+    public static final String SUBMISSION_SUBMITTED = "submission.submitted";
+    public static final String SUBMISSION_GRADED = "submission.graded";
+    public static final String SUBMISSIONS_DOWNLOADED = "submission.downloaded";
+    public static final String GRADES_EXPORTED = "grade.exported";
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 
@@ -36,6 +70,14 @@ public class AuditService {
         this.tx = new TransactionTemplate(txManager);
         // Transaction riêng: audit vẫn được ghi kể cả khi nghiệp vụ bên ngoài rollback
         this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
+
+    /** Như record(..., ip) với IP của request đang xử lý (null nếu gọi ngoài request). */
+    public void record(Long actorUserId, String action, String target, String detail) {
+        record(actorUserId, action, target, detail,
+                RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs
+                        ? RequestInfo.clientIp(attrs.getRequest())
+                        : null);
     }
 
     public void record(Long actorUserId, String action, String target, String detail, String ip) {
