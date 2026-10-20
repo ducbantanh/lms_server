@@ -1,38 +1,41 @@
 package lms.course;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.Arrays;
-import java.util.Locale;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import lms.audit.AuditService;
 import lms.auth.AuthPrincipal;
 import lms.common.AppException;
 import lms.common.ErrorCode;
-import lms.config.AppProperties;
 import lms.course.CourseViews.AssessmentRequest;
+import lms.course.CourseViews.AssessmentUpdateRequest;
 import lms.course.CourseViews.AssessmentView;
 import lms.course.CourseViews.FileView;
+import lms.course.CourseViews.LessonRequest;
+import lms.course.CourseViews.LessonView;
 import lms.course.CourseViews.SectionView;
+import lms.course.UploadChecker.Checked;
+import lms.notification.NotificationService;
+import lms.submission.SubmissionFileRepository;
 
-/** Nội dung khóa học: mục/tuần, tài liệu, bài kiểm tra; và tải tài liệu có kiểm tra quyền. */
+/**
+ * Nội dung khóa học: mục/tuần, bài học, tài liệu, bài kiểm tra; và tải tài liệu có kiểm tra quyền.
+ * Mọi thay đổi ghi audit với target là mã khóa học.
+ */
 @Service
 public class CourseContentService {
 
     public static final String PDF = "application/pdf";
-    /** Chỉ nhận PDF/DOCX/PPTX; kiểm tra cả đuôi file lẫn magic bytes. */
-    private static final Map<String, String> TYPES = Map.of(
-            "pdf", PDF,
-            "docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
-    private static final byte[] PDF_MAGIC = "%PDF-".getBytes();
-    private static final byte[] ZIP_MAGIC = { 0x50, 0x4b, 0x03, 0x04 };
 
     /** File để controller trả về: metadata + đường dẫn trên đĩa. */
     public record Download(CourseFile file, Path path) {
@@ -41,23 +44,33 @@ public class CourseContentService {
     private final CourseService courses;
     private final CourseRepository courseRepo;
     private final CourseSectionRepository sections;
+    private final LessonRepository lessons;
     private final CourseFileRepository files;
     private final AssessmentRepository assessments;
     private final EnrollmentRepository enrollments;
+    private final SubmissionFileRepository submissionFiles;
     private final FileStorage storage;
-    private final long maxFileBytes;
+    private final UploadChecker uploads;
+    private final NotificationService notifications;
+    private final AuditService audit;
 
     public CourseContentService(CourseService courses, CourseRepository courseRepo,
-            CourseSectionRepository sections, CourseFileRepository files, AssessmentRepository assessments,
-            EnrollmentRepository enrollments, FileStorage storage, AppProperties props) {
+            CourseSectionRepository sections, LessonRepository lessons, CourseFileRepository files,
+            AssessmentRepository assessments, EnrollmentRepository enrollments,
+            SubmissionFileRepository submissionFiles, FileStorage storage, UploadChecker uploads,
+            NotificationService notifications, AuditService audit) {
+        this.notifications = notifications;
         this.courses = courses;
         this.courseRepo = courseRepo;
         this.sections = sections;
+        this.lessons = lessons;
         this.files = files;
         this.assessments = assessments;
         this.enrollments = enrollments;
+        this.submissionFiles = submissionFiles;
         this.storage = storage;
-        this.maxFileBytes = props.storage().maxFileBytes();
+        this.uploads = uploads;
+        this.audit = audit;
     }
 
     // ---------------------------------------------------------------- mục
@@ -70,52 +83,176 @@ public class CourseContentService {
         }
         CourseSection s = sections.save(new CourseSection(c.getId(), sections.maxPosition(c.getId()) + 1,
                 title.trim()));
-        return new SectionView(s.getPublicId(), s.getPosition(), s.getTitle());
+        audit.record(me.userId(), AuditService.SECTION_CREATED, c.getCode(), s.getTitle());
+        return sectionView(s);
     }
 
-    /** Xóa mục; tài liệu trong mục chuyển sang "chưa phân mục". */
+    @Transactional
+    public SectionView renameSection(String courseId, String sectionId, String title, AuthPrincipal me) {
+        Course c = courses.requireManaged(courseId, me);
+        CourseSection s = requireSection(c, sectionId);
+        String before = s.getTitle();
+        s.setTitle(title.trim());
+        audit.record(me.userId(), AuditService.SECTION_UPDATED, c.getCode(), before + " → " + s.getTitle());
+        return sectionView(s);
+    }
+
+    /** ids phải là đúng tập mục hiện có của khóa học; vị trí mới là 1..n theo thứ tự gửi lên. */
+    @Transactional
+    public List<SectionView> reorderSections(String courseId, List<String> ids, AuthPrincipal me) {
+        Course c = courses.requireManaged(courseId, me);
+        List<CourseSection> list = sections.findByCourseIdOrderByPosition(c.getId());
+        Map<String, CourseSection> byId = requireSameSet(list, CourseSection::getPublicId, ids);
+        for (int i = 0; i < ids.size(); i++) {
+            byId.get(ids.get(i)).setPosition(i + 1);
+        }
+        audit.record(me.userId(), AuditService.SECTIONS_REORDERED, c.getCode(), null);
+        return ids.stream().map(byId::get).map(CourseContentService::sectionView).toList();
+    }
+
+    /** Xóa mục; bài học và tài liệu trong mục chuyển sang "chưa phân mục". */
     @Transactional
     public void deleteSection(String courseId, String sectionId, AuthPrincipal me) {
         Course c = courses.requireManaged(courseId, me);
-        CourseSection s = sections.findByPublicIdAndCourseId(sectionId, c.getId())
-                .orElseThrow(() -> AppException.notFound("Section"));
+        CourseSection s = requireSection(c, sectionId);
+        lessons.detachFromSection(s.getId());
         files.detachFromSection(s.getId());
         sections.delete(s);
+        audit.record(me.userId(), AuditService.SECTION_DELETED, c.getCode(), s.getTitle());
+    }
+
+    private CourseSection requireSection(Course c, String sectionId) {
+        return sections.findByPublicIdAndCourseId(sectionId, c.getId())
+                .orElseThrow(() -> AppException.notFound("Section"));
+    }
+
+    private static SectionView sectionView(CourseSection s) {
+        return new SectionView(s.getPublicId(), s.getPosition(), s.getTitle());
+    }
+
+    // ---------------------------------------------------------------- bài học
+
+    @Transactional
+    public LessonView createLesson(String courseId, LessonRequest req, AuthPrincipal me) {
+        Course c = courses.requireManaged(courseId, me);
+        if (c.getFormat() == Course.FORMAT_FILES_ONLY) {
+            throw new AppException(ErrorCode.VALIDATION_FAILED, "This course has no lessons");
+        }
+        CourseSection s = optionalSection(c, req.sectionId());
+        Long sid = s == null ? null : s.getId();
+        Lesson l = lessons.save(new Lesson(c.getId(), sid, lessons.maxPosition(c.getId(), sid) + 1,
+                req.title().trim(), CourseService.blankToNull(req.body()), req.hidden()));
+        // Bài đang ẩn thì sinh viên chưa thấy: không thông báo dù giảng viên có chọn
+        if (req.notifyStudents() && !req.hidden()) {
+            notifications.lessonCreated(c, l.getTitle(), s == null ? null : s.getTitle(), me.userId());
+        }
+        audit.record(me.userId(), AuditService.LESSON_CREATED, c.getCode(), l.getTitle());
+        return CourseService.lessonView(l, s == null ? null : s.getPublicId());
+    }
+
+    /** Ghi đè tiêu đề, nội dung, trạng thái ẩn; đổi mục thì bài xuống cuối mục mới, file đính kèm đi theo. */
+    @Transactional
+    public LessonView updateLesson(String courseId, String lessonId, LessonRequest req, AuthPrincipal me) {
+        Course c = courses.requireManaged(courseId, me);
+        Lesson l = requireLesson(c, lessonId);
+        CourseSection s = optionalSection(c, req.sectionId());
+        Long sid = s == null ? null : s.getId();
+        if (!Objects.equals(sid, l.getSectionId())) {
+            l.moveTo(sid, lessons.maxPosition(c.getId(), sid) + 1);
+            files.moveWithLesson(l.getId(), sid);
+        }
+        boolean wasHidden = l.isHidden();
+        l.setTitle(req.title().trim());
+        l.setBody(CourseService.blankToNull(req.body()));
+        l.setHidden(req.hidden());
+        // flush để @PreUpdate cập nhật updatedAt trước khi trả về
+        lessons.saveAndFlush(l);
+        audit.record(me.userId(), AuditService.LESSON_UPDATED, c.getCode(), l.getTitle()
+                + (wasHidden == l.isHidden() ? "" : l.isHidden() ? " (ẩn)" : " (hiện)"));
+        return CourseService.lessonView(l, s == null ? null : s.getPublicId());
+    }
+
+    /** ids phải là đúng tập bài (kể cả bài ẩn) trong mục sectionId; vị trí mới là 1..n. */
+    @Transactional
+    public void reorderLessons(String courseId, String sectionId, List<String> ids, AuthPrincipal me) {
+        Course c = courses.requireManaged(courseId, me);
+        CourseSection s = optionalSection(c, sectionId);
+        Long sid = s == null ? null : s.getId();
+        List<Lesson> list = lessons.findByCourseIdOrderByPositionAscIdAsc(c.getId()).stream()
+                .filter(l -> Objects.equals(l.getSectionId(), sid)).toList();
+        Map<String, Lesson> byId = requireSameSet(list, Lesson::getPublicId, ids);
+        for (int i = 0; i < ids.size(); i++) {
+            byId.get(ids.get(i)).setPosition(i + 1);
+        }
+        audit.record(me.userId(), AuditService.LESSONS_REORDERED, c.getCode(),
+                s == null ? "Chưa phân mục" : s.getTitle());
+    }
+
+    /** Xóa bài; tài liệu đính kèm được giữ lại trong mục của bài. */
+    @Transactional
+    public void deleteLesson(String courseId, String lessonId, AuthPrincipal me) {
+        Course c = courses.requireManaged(courseId, me);
+        Lesson l = requireLesson(c, lessonId);
+        files.detachFromLesson(l.getId());
+        lessons.delete(l);
+        audit.record(me.userId(), AuditService.LESSON_DELETED, c.getCode(), l.getTitle());
+    }
+
+    private Lesson requireLesson(Course c, String lessonId) {
+        return lessons.findByPublicIdAndCourseId(lessonId, c.getId())
+                .orElseThrow(() -> AppException.notFound("Lesson"));
+    }
+
+    /** Mục theo public id; trống là "chưa phân mục". */
+    private CourseSection optionalSection(Course c, String sectionId) {
+        if (sectionId == null || sectionId.isBlank()) {
+            return null;
+        }
+        return requireSection(c, sectionId);
+    }
+
+    /** Danh sách id gửi lên phải trùng khít (không trùng lặp, không thiếu, không thừa) với các phần tử hiện có. */
+    static <T> Map<String, T> requireSameSet(List<T> current, Function<T, String> publicId, List<String> ids) {
+        Map<String, T> byId = current.stream().collect(Collectors.toMap(publicId, Function.identity()));
+        if (ids.size() != byId.size() || !byId.keySet().equals(new HashSet<>(ids))) {
+            throw new AppException(ErrorCode.STALE_ORDER);
+        }
+        return byId;
     }
 
     // ---------------------------------------------------------------- tài liệu
 
+    /**
+     * lessonId có giá trị thì file đính kèm bài đó và nằm trong mục của bài (sectionId bị bỏ qua).
+     * notifyStudents: gửi thông báo nếu sinh viên thấy được file (file và bài học chứa nó không bị ẩn).
+     */
     @Transactional
-    public FileView upload(String courseId, MultipartFile upload, String sectionId, boolean hidden,
-            AuthPrincipal me) {
+    public FileView upload(String courseId, MultipartFile upload, String sectionId, String lessonId,
+            boolean hidden, boolean notifyStudents, AuthPrincipal me) {
         Course c = courses.requireManaged(courseId, me);
-        if (upload == null || upload.isEmpty()) {
-            throw new AppException(ErrorCode.VALIDATION_FAILED, "Empty file");
+        Checked file = uploads.check(upload, UploadChecker.MATERIAL);
+        CourseSection section = null;
+        Lesson lesson = null;
+        if (c.getFormat() != Course.FORMAT_FILES_ONLY) {
+            if (lessonId != null && !lessonId.isBlank()) {
+                lesson = requireLesson(c, lessonId);
+                section = lesson.getSectionId() == null ? null : sections.findById(lesson.getSectionId()).orElse(null);
+            } else {
+                section = optionalSection(c, sectionId);
+            }
         }
-        if (upload.getSize() > maxFileBytes) {
-            throw new AppException(ErrorCode.PAYLOAD_TOO_LARGE);
-        }
-        String name = baseName(upload.getOriginalFilename());
-        String ext = name.contains(".") ? name.substring(name.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT) : "";
-        String contentType = TYPES.get(ext);
-        byte[] data;
+        String key = storage.store(file.data());
         try {
-            data = upload.getBytes();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-        if (contentType == null || !startsWith(data, PDF.equals(contentType) ? PDF_MAGIC : ZIP_MAGIC)) {
-            throw new AppException(ErrorCode.UNSUPPORTED_FILE_TYPE);
-        }
-        Long section = null;
-        if (c.getFormat() != Course.FORMAT_FILES_ONLY && sectionId != null && !sectionId.isBlank()) {
-            section = sections.findByPublicIdAndCourseId(sectionId, c.getId())
-                    .orElseThrow(() -> AppException.notFound("Section")).getId();
-        }
-        String key = storage.store(data);
-        try {
-            CourseFile f = files.save(new CourseFile(c.getId(), section, name, contentType, data.length, hidden, key));
-            return CourseService.fileView(f, sectionId == null || section == null ? null : sectionId);
+            CourseFile f = files.save(new CourseFile(c.getId(), section == null ? null : section.getId(),
+                    lesson == null ? null : lesson.getId(), file.name(), file.contentType(), file.data().length,
+                    hidden, key));
+            if (notifyStudents && !hidden && (lesson == null || !lesson.isHidden())) {
+                notifications.fileUploaded(c, f.getName(),
+                        lesson != null ? lesson.getTitle() : section == null ? null : section.getTitle(), me.userId());
+            }
+            audit.record(me.userId(), AuditService.FILE_UPLOADED, c.getCode(), f.getName() + (hidden ? " (ẩn)" : ""));
+            return CourseService.fileView(f, section == null ? null : section.getPublicId(),
+                    lesson == null ? null : lesson.getPublicId());
         } catch (RuntimeException e) {
             storage.deleteQuietly(key);
             throw e;
@@ -125,32 +262,57 @@ public class CourseContentService {
     @Transactional
     public void setHidden(String courseId, String fileId, boolean hidden, AuthPrincipal me) {
         Course c = courses.requireManaged(courseId, me);
-        files.findByPublicIdAndCourseId(fileId, c.getId()).orElseThrow(() -> AppException.notFound("File"))
-                .setHidden(hidden);
+        CourseFile f = requireMaterial(c, fileId);
+        f.setHidden(hidden);
+        audit.record(me.userId(), hidden ? AuditService.FILE_HIDDEN : AuditService.FILE_SHOWN, c.getCode(),
+                f.getName());
     }
 
     /** Xóa tài liệu; bài kiểm tra dùng file này làm đề sẽ thành "không có đề" (FK SET NULL). */
     @Transactional
     public void deleteFile(String courseId, String fileId, AuthPrincipal me) {
         Course c = courses.requireManaged(courseId, me);
-        CourseFile f = files.findByPublicIdAndCourseId(fileId, c.getId())
-                .orElseThrow(() -> AppException.notFound("File"));
+        CourseFile f = requireMaterial(c, fileId);
         files.delete(f);
         CourseService.afterCommit(() -> storage.deleteQuietly(f.getStorageKey()));
+        audit.record(me.userId(), AuditService.FILE_DELETED, c.getCode(), f.getName());
+    }
+
+    /** Tài liệu của khóa học; đề riêng của bài không được quản lý qua API tài liệu (NOT_FOUND). */
+    private CourseFile requireMaterial(Course c, String fileId) {
+        return files.findByPublicIdAndCourseId(fileId, c.getId()).filter(f -> !f.isPaper())
+                .orElseThrow(() -> AppException.notFound("File"));
     }
 
     // ---------------------------------------------------------------- bài kiểm tra
 
+    /**
+     * Tạo bài. Đề là một PDF trong tài liệu (paperFileId), hoặc file tải lên kèm (paperUpload, khi đó
+     * paperFileId bị bỏ qua): file tải lên chỉ thuộc bài này, không nằm trong tài liệu khóa học.
+     */
     @Transactional
-    public AssessmentView createAssessment(String courseId, AssessmentRequest req, AuthPrincipal me) {
+    public AssessmentView createAssessment(String courseId, AssessmentRequest req, MultipartFile paperUpload,
+            AuthPrincipal me) {
         Course c = courses.requireManaged(courseId, me);
-        if (req.opensAt() != null && req.closesAt() != null && !req.closesAt().isAfter(req.opensAt())) {
-            throw new AppException(ErrorCode.VALIDATION_FAILED, "closesAt must be after opensAt");
+        requireWindow(req.opensAt(), req.closesAt());
+        if (paperUpload != null) {
+            Checked file = uploads.check(paperUpload, UploadChecker.MATERIAL);
+            if (!PDF.equals(file.contentType())) {
+                throw new AppException(ErrorCode.UNSUPPORTED_FILE_TYPE, "Paper must be a PDF");
+            }
+            String key = storage.store(file.data());
+            try {
+                CourseFile paper = files.save(CourseFile.paper(c.getId(), file.name(), file.data().length, key));
+                return saveAssessment(c, req, paper, me);
+            } catch (RuntimeException e) {
+                storage.deleteQuietly(key);
+                throw e;
+            }
         }
         CourseFile paper = null;
         if (req.paperFileId() != null && !req.paperFileId().isBlank()) {
-            paper = files.findByPublicIdAndCourseId(req.paperFileId(), c.getId())
-                    .orElseThrow(() -> AppException.notFound("File"));
+            // Đề riêng của bài khác không dùng lại được: xóa bài đó sẽ xóa luôn file
+            paper = requireMaterial(c, req.paperFileId());
             if (!PDF.equals(paper.getContentType())) {
                 throw new AppException(ErrorCode.UNSUPPORTED_FILE_TYPE, "Paper must be a PDF");
             }
@@ -159,31 +321,90 @@ public class CourseContentService {
                 paper.setHidden(true);
             }
         }
+        return saveAssessment(c, req, paper, me);
+    }
+
+    private AssessmentView saveAssessment(Course c, AssessmentRequest req, CourseFile paper, AuthPrincipal me) {
         if (req.type() == Assessment.TYPE_EXAM && paper == null) {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "An exam needs a PDF paper");
         }
         Assessment a = assessments.save(new Assessment(c.getId(), req.type(), req.title().trim(),
                 CourseService.blankToNull(req.description()), paper == null ? null : paper.getId(),
                 req.opensAt(), req.closesAt()));
-        Instant now = Instant.now();
-        return new AssessmentView(a.getPublicId(), a.getType(), a.getTitle(), a.getDescription(),
-                paper == null ? null : paper.getPublicId(), paper == null ? null : paper.getName(),
-                a.getOpensAt(), a.getClosesAt(), a.statusAt(now));
+        notifications.assessmentCreated(c, a, req.notifyStudents(), me.userId());
+        audit.record(me.userId(), AuditService.ASSESSMENT_CREATED, c.getCode(), a.getTitle());
+        return teacherView(a, paper);
     }
 
-    /** Xóa bài; file đề vẫn giữ trong tài liệu. */
+    /**
+     * Sửa tiêu đề, mô tả, giờ mở/đóng. Bài kiểm tra đã kết thúc không sửa được (ASSESSMENT_CLOSED),
+     * để không mở lại bài thi đã chốt điểm.
+     */
+    @Transactional
+    public AssessmentView updateAssessment(String courseId, String assessmentId, AssessmentUpdateRequest req,
+            AuthPrincipal me) {
+        Course c = courses.requireManaged(courseId, me);
+        Assessment a = requireAssessment(c, assessmentId);
+        if (a.isLocked(Instant.now())) {
+            throw new AppException(ErrorCode.ASSESSMENT_CLOSED);
+        }
+        requireWindow(req.opensAt(), req.closesAt());
+        a.update(req.title().trim(), CourseService.blankToNull(req.description()), req.opensAt(), req.closesAt());
+        audit.record(me.userId(), AuditService.ASSESSMENT_UPDATED, c.getCode(), a.getTitle() + " · mở "
+                + (a.getOpensAt() == null ? "ngay" : a.getOpensAt()) + " · đóng "
+                + (a.getClosesAt() == null ? "không hạn" : a.getClosesAt()));
+        CourseFile paper = a.getPaperFileId() == null ? null : files.findById(a.getPaperFileId()).orElse(null);
+        return teacherView(a, paper);
+    }
+
+    /**
+     * Xóa bài; đề lấy từ tài liệu vẫn giữ trong tài liệu, đề tải lên riêng cho bài bị xóa theo.
+     * Bài kiểm tra đã kết thúc không xóa được (ASSESSMENT_CLOSED).
+     */
     @Transactional
     public void deleteAssessment(String courseId, String assessmentId, AuthPrincipal me) {
         Course c = courses.requireManaged(courseId, me);
-        assessments.delete(assessments.findByPublicIdAndCourseId(assessmentId, c.getId())
-                .orElseThrow(() -> AppException.notFound("Assessment")));
+        Assessment a = requireAssessment(c, assessmentId);
+        if (!a.isDeletable(Instant.now())) {
+            throw new AppException(ErrorCode.ASSESSMENT_CLOSED);
+        }
+        // DB xóa dây chuyền bài nộp; file bài làm trên đĩa xóa sau khi commit
+        List<String> submissionKeys = submissionFiles.storageKeysByAssessment(a.getId());
+        assessments.delete(a);
+        CourseService.afterCommit(() -> submissionKeys.forEach(storage::deleteQuietly));
+        if (a.getPaperFileId() != null) {
+            files.findById(a.getPaperFileId()).filter(CourseFile::isPaper).ifPresent(f -> {
+                files.delete(f);
+                CourseService.afterCommit(() -> storage.deleteQuietly(f.getStorageKey()));
+            });
+        }
+        audit.record(me.userId(), AuditService.ASSESSMENT_DELETED, c.getCode(),
+                a.getTitle() + " (" + submissionKeys.size() + " file bài nộp)");
+    }
+
+    private Assessment requireAssessment(Course c, String assessmentId) {
+        return assessments.findByPublicIdAndCourseId(assessmentId, c.getId())
+                .orElseThrow(() -> AppException.notFound("Assessment"));
+    }
+
+    private static void requireWindow(Instant opensAt, Instant closesAt) {
+        if (opensAt != null && closesAt != null && !closesAt.isAfter(opensAt)) {
+            throw new AppException(ErrorCode.VALIDATION_FAILED, "closesAt must be after opensAt");
+        }
+    }
+
+    /** Góc nhìn giảng viên: luôn thấy đề. */
+    private static AssessmentView teacherView(Assessment a, CourseFile paper) {
+        return new AssessmentView(a.getPublicId(), a.getType(), a.getTitle(), a.getDescription(),
+                paper == null ? null : paper.getPublicId(), paper == null ? null : paper.getName(),
+                a.getOpensAt(), a.getClosesAt(), a.statusAt(Instant.now()));
     }
 
     // ---------------------------------------------------------------- tải file
 
     /**
-     * Người quản lý khóa học tải mọi file. Sinh viên đã ghi danh tải file không ẩn,
-     * hoặc file ẩn là đề của một bài đã mở. Còn lại NOT_FOUND.
+     * Người quản lý khóa học tải mọi file. Sinh viên đã ghi danh tải file không ẩn (và không thuộc
+     * bài học bị ẩn), hoặc file ẩn là đề của một bài đã mở. Còn lại NOT_FOUND.
      */
     @Transactional(readOnly = true)
     public Download download(String fileId, AuthPrincipal me) {
@@ -194,23 +415,12 @@ public class CourseContentService {
             boolean enrolled = enrollments.existsByCourseIdAndUserId(c.getId(), me.userId());
             Instant now = Instant.now();
             boolean openPaper = assessments.findByPaperFileId(f.getId()).stream().anyMatch(a -> a.isOpened(now));
-            if (!enrolled || (f.isHidden() && !openPaper)) {
+            boolean lessonHidden = f.getLessonId() != null
+                    && lessons.findById(f.getLessonId()).map(Lesson::isHidden).orElse(false);
+            if (!enrolled || ((f.isHidden() || lessonHidden) && !openPaper)) {
                 throw AppException.notFound("File");
             }
         }
         return new Download(f, storage.path(f.getStorageKey()));
-    }
-
-    private static String baseName(String original) {
-        String name = original == null ? "" : original.replace('\\', '/');
-        name = name.substring(name.lastIndexOf('/') + 1).strip();
-        if (name.isEmpty()) {
-            throw new AppException(ErrorCode.VALIDATION_FAILED, "Missing file name");
-        }
-        return name.length() > 255 ? name.substring(name.length() - 255) : name;
-    }
-
-    private static boolean startsWith(byte[] data, byte[] magic) {
-        return data.length >= magic.length && Arrays.equals(data, 0, magic.length, magic, 0, magic.length);
     }
 }
