@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AssessmentRepository extends JpaRepository<Assessment, Long> {
 
+    Optional<Assessment> findByPublicId(String publicId);
+
     List<Assessment> findByCourseIdOrderByCreatedAt(long courseId);
 
     Optional<Assessment> findByPublicIdAndCourseId(String publicId, long courseId);

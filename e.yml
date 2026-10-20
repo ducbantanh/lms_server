@@ -1,0 +1,15 @@
+[1mdiff --cc .gitignore[m
+[1mindex d6a4e1f,1c5ee7d..0000000[m
+[1m--- a/.gitignore[m
+[1m+++ b/.gitignore[m
+[36m@@@ -5,5 -5,4 +5,9 @@@[m [mtarget[m
+  *.iml[m
+  .vscode/[m
+  .DS_Store[m
+[31m -.env[m
+[32m++<<<<<<< Updated upstream[m
+[32m +# Tài liệu khóa học do server lưu (app.storage.dir)[m
+[32m +data/[m
+[32m++=======[m
+[32m++.env[m
+[32m++>>>>>>> Stashed changes[m

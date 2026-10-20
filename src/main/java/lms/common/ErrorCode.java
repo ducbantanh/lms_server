@@ -22,6 +22,9 @@ public enum ErrorCode {
     PAYLOAD_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "Payload too large"),
     UNSUPPORTED_FILE_TYPE(HttpStatus.BAD_REQUEST, "Unsupported file type"),
     INVALID_ENROLL_KEY(HttpStatus.BAD_REQUEST, "Invalid enroll key"),
+    ASSESSMENT_NOT_OPEN(HttpStatus.FORBIDDEN, "Assessment is not open yet"),
+    ASSESSMENT_CLOSED(HttpStatus.FORBIDDEN, "Assessment is already closed"),
+    NOT_ENROLLED(HttpStatus.FORBIDDEN, "Not enrolled in this course"),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
 
     private final HttpStatus status;
