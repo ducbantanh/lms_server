@@ -5,5 +5,9 @@ target/
 *.iml
 .vscode/
 .DS_Store
+<<<<<<< Updated upstream
 # Tài liệu khóa học do server lưu (app.storage.dir)
 data/
+=======
+.env
+>>>>>>> Stashed changes
