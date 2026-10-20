@@ -30,7 +30,8 @@ import lms.submission.SubmissionFileRepository;
 
 /**
  * Nội dung khóa học: mục/tuần, bài học, tài liệu, bài kiểm tra; và tải tài liệu có kiểm tra quyền.
- * Mọi thay đổi ghi audit với target là mã khóa học.
+ * Mọi thay đổi chỉ giảng viên phụ trách làm được (requireTeaching; admin chỉ xem, tải file vẫn được)
+ * và ghi audit với target là mã khóa học.
  */
 @Service
 public class CourseContentService {
@@ -77,7 +78,7 @@ public class CourseContentService {
 
     @Transactional
     public SectionView addSection(String courseId, String title, AuthPrincipal me) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         if (c.getFormat() == Course.FORMAT_FILES_ONLY) {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "This course has no sections");
         }
@@ -89,7 +90,7 @@ public class CourseContentService {
 
     @Transactional
     public SectionView renameSection(String courseId, String sectionId, String title, AuthPrincipal me) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         CourseSection s = requireSection(c, sectionId);
         String before = s.getTitle();
         s.setTitle(title.trim());
@@ -100,7 +101,7 @@ public class CourseContentService {
     /** ids phải là đúng tập mục hiện có của khóa học; vị trí mới là 1..n theo thứ tự gửi lên. */
     @Transactional
     public List<SectionView> reorderSections(String courseId, List<String> ids, AuthPrincipal me) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         List<CourseSection> list = sections.findByCourseIdOrderByPosition(c.getId());
         Map<String, CourseSection> byId = requireSameSet(list, CourseSection::getPublicId, ids);
         for (int i = 0; i < ids.size(); i++) {
@@ -113,7 +114,7 @@ public class CourseContentService {
     /** Xóa mục; bài học và tài liệu trong mục chuyển sang "chưa phân mục". */
     @Transactional
     public void deleteSection(String courseId, String sectionId, AuthPrincipal me) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         CourseSection s = requireSection(c, sectionId);
         lessons.detachFromSection(s.getId());
         files.detachFromSection(s.getId());
@@ -134,7 +135,7 @@ public class CourseContentService {
 
     @Transactional
     public LessonView createLesson(String courseId, LessonRequest req, AuthPrincipal me) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         if (c.getFormat() == Course.FORMAT_FILES_ONLY) {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "This course has no lessons");
         }
@@ -153,7 +154,7 @@ public class CourseContentService {
     /** Ghi đè tiêu đề, nội dung, trạng thái ẩn; đổi mục thì bài xuống cuối mục mới, file đính kèm đi theo. */
     @Transactional
     public LessonView updateLesson(String courseId, String lessonId, LessonRequest req, AuthPrincipal me) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         Lesson l = requireLesson(c, lessonId);
         CourseSection s = optionalSection(c, req.sectionId());
         Long sid = s == null ? null : s.getId();
@@ -175,7 +176,7 @@ public class CourseContentService {
     /** ids phải là đúng tập bài (kể cả bài ẩn) trong mục sectionId; vị trí mới là 1..n. */
     @Transactional
     public void reorderLessons(String courseId, String sectionId, List<String> ids, AuthPrincipal me) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         CourseSection s = optionalSection(c, sectionId);
         Long sid = s == null ? null : s.getId();
         List<Lesson> list = lessons.findByCourseIdOrderByPositionAscIdAsc(c.getId()).stream()
@@ -191,7 +192,7 @@ public class CourseContentService {
     /** Xóa bài; tài liệu đính kèm được giữ lại trong mục của bài. */
     @Transactional
     public void deleteLesson(String courseId, String lessonId, AuthPrincipal me) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         Lesson l = requireLesson(c, lessonId);
         files.detachFromLesson(l.getId());
         lessons.delete(l);
@@ -229,7 +230,7 @@ public class CourseContentService {
     @Transactional
     public FileView upload(String courseId, MultipartFile upload, String sectionId, String lessonId,
             boolean hidden, boolean notifyStudents, AuthPrincipal me) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         Checked file = uploads.check(upload, UploadChecker.MATERIAL);
         CourseSection section = null;
         Lesson lesson = null;
@@ -261,7 +262,7 @@ public class CourseContentService {
 
     @Transactional
     public void setHidden(String courseId, String fileId, boolean hidden, AuthPrincipal me) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         CourseFile f = requireMaterial(c, fileId);
         f.setHidden(hidden);
         audit.record(me.userId(), hidden ? AuditService.FILE_HIDDEN : AuditService.FILE_SHOWN, c.getCode(),
@@ -271,7 +272,7 @@ public class CourseContentService {
     /** Xóa tài liệu; bài kiểm tra dùng file này làm đề sẽ thành "không có đề" (FK SET NULL). */
     @Transactional
     public void deleteFile(String courseId, String fileId, AuthPrincipal me) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         CourseFile f = requireMaterial(c, fileId);
         files.delete(f);
         CourseService.afterCommit(() -> storage.deleteQuietly(f.getStorageKey()));
@@ -293,7 +294,7 @@ public class CourseContentService {
     @Transactional
     public AssessmentView createAssessment(String courseId, AssessmentRequest req, MultipartFile paperUpload,
             AuthPrincipal me) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         requireWindow(req.opensAt(), req.closesAt());
         if (paperUpload != null) {
             Checked file = uploads.check(paperUpload, UploadChecker.MATERIAL);
@@ -343,7 +344,7 @@ public class CourseContentService {
     @Transactional
     public AssessmentView updateAssessment(String courseId, String assessmentId, AssessmentUpdateRequest req,
             AuthPrincipal me) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         Assessment a = requireAssessment(c, assessmentId);
         if (a.isLocked(Instant.now())) {
             throw new AppException(ErrorCode.ASSESSMENT_CLOSED);
@@ -363,7 +364,7 @@ public class CourseContentService {
      */
     @Transactional
     public void deleteAssessment(String courseId, String assessmentId, AuthPrincipal me) {
-        Course c = courses.requireManaged(courseId, me);
+        Course c = courses.requireTeaching(courseId, me);
         Assessment a = requireAssessment(c, assessmentId);
         if (!a.isDeletable(Instant.now())) {
             throw new AppException(ErrorCode.ASSESSMENT_CLOSED);

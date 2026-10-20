@@ -126,6 +126,10 @@ public class Course {
         this.enrollKey = enrollKey;
     }
 
+    public void setTeacher(User teacher) {
+        this.teacher = teacher;
+    }
+
     public User getTeacher() {
         return teacher;
     }

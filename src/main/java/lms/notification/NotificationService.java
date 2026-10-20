@@ -114,7 +114,7 @@ public class NotificationService {
     /** Thông báo tùy chỉnh tới cả lớp hoặc các sinh viên được chọn (phải đang ghi danh). */
     @Transactional
     public SentView announce(String courseId, AnnouncementRequest req, AuthPrincipal me) {
-        Course c = courseService.requireManaged(courseId, me);
+        Course c = courseService.requireTeaching(courseId, me);
         Set<Long> enrolled = enrolledUserIds(c);
         Collection<Long> targets = enrolled;
         if (req.studentIds() != null && !req.studentIds().isEmpty()) {

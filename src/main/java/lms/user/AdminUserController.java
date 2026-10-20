@@ -1,7 +1,6 @@
 package lms.user;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
 
@@ -14,6 +13,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -29,21 +29,22 @@ import lms.common.AppException;
 import lms.common.ErrorCode;
 import lms.common.PageResult;
 import lms.common.RequestInfo;
+import lms.user.importing.AccountImportService;
 import lms.user.importing.ImportReport;
-import lms.user.importing.StudentImportService;
 
 @RestController
 @RequestMapping("/api/v1/admin/users")
 @RequirePermission(Permissions.USERS_MANAGE)
 public class AdminUserController {
 
-    public record ImportTextRequest(@NotBlank String content) {
+    /** role: 5 sinh viên (mặc định), 1 giảng viên. */
+    public record ImportTextRequest(@NotBlank String content, Integer role) {
     }
 
     private final UserAdminService service;
-    private final StudentImportService importService;
+    private final AccountImportService importService;
 
-    public AdminUserController(UserAdminService service, StudentImportService importService) {
+    public AdminUserController(UserAdminService service, AccountImportService importService) {
         this.service = service;
         this.importService = importService;
     }
@@ -60,6 +61,18 @@ public class AdminUserController {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "Unknown role");
         }
         return ApiResponse.ok(PageResult.of(service.search(q, role, status, page, size), UserView::of));
+    }
+
+    @PutMapping("/{id}")
+    public ApiResponse<UserView> update(@PathVariable String id, @Valid @RequestBody UserAdminService.UpdateRequest body,
+            AuthPrincipal me, HttpServletRequest req) {
+        return ApiResponse.ok(UserView.of(service.update(id, body, me, RequestInfo.clientIp(req))));
+    }
+
+    /** Đặt lại mật khẩu về ngày sinh ddmmyyyy, bắt đổi ở lần đăng nhập tới. */
+    @PostMapping("/{id}/reset-password")
+    public ApiResponse<UserView> resetPassword(@PathVariable String id, AuthPrincipal me, HttpServletRequest req) {
+        return ApiResponse.ok(UserView.of(service.resetPassword(id, me, RequestInfo.clientIp(req))));
     }
 
     @PostMapping("/{id}/lock")
@@ -86,22 +99,24 @@ public class AdminUserController {
         return ApiResponse.ok(Map.of("revokedSessions", revoked));
     }
 
-    /** Import từ text dán vào ô textarea. */
+    /** Import từ text dán vào ô textarea (dạng | , ; hoặc tab như AccountImportParser). */
     @PostMapping(path = "/import", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<ImportReport> importText(@Valid @RequestBody ImportTextRequest body, AuthPrincipal me,
             HttpServletRequest req) {
-        return ApiResponse.ok(importService.importStudents(body.content(), me, RequestInfo.clientIp(req)));
+        return ApiResponse.ok(importService.importAccounts(body.content(),
+                AccountImportService.importableRole(body.role()), me, RequestInfo.clientIp(req)));
     }
 
-    /** Import từ file .txt (UTF-8), field multipart tên "file". */
+    /** Import từ file .txt hoặc .csv (UTF-8, hoặc Windows-1258 khi Excel lưu "CSV" thường), field "file". */
     @PostMapping(path = "/import-file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ApiResponse<ImportReport> importFile(@RequestPart("file") MultipartFile file, AuthPrincipal me,
-            HttpServletRequest req) throws IOException {
+    public ApiResponse<ImportReport> importFile(@RequestPart("file") MultipartFile file,
+            @RequestParam(required = false) Integer role, AuthPrincipal me, HttpServletRequest req)
+            throws IOException {
         String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase(Locale.ROOT);
-        if (file.isEmpty() || !name.endsWith(".txt")) {
-            throw new AppException(ErrorCode.VALIDATION_FAILED, "Only non-empty .txt files are accepted");
+        if (file.isEmpty() || !(name.endsWith(".txt") || name.endsWith(".csv"))) {
+            throw new AppException(ErrorCode.VALIDATION_FAILED, "Only non-empty .txt or .csv files are accepted");
         }
-        String content = new String(file.getBytes(), StandardCharsets.UTF_8);
-        return ApiResponse.ok(importService.importStudents(content, me, RequestInfo.clientIp(req)));
+        return ApiResponse.ok(importService.importAccounts(AccountImportService.decode(file.getBytes()),
+                AccountImportService.importableRole(role), me, RequestInfo.clientIp(req)));
     }
 }
