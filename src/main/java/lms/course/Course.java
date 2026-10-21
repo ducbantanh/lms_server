@@ -90,8 +90,16 @@ public class Course {
         return code;
     }
 
+    public void setCode(String code) {
+        this.code = code;
+    }
+
     public String getTitle() {
         return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
     }
 
     public String getDescription() {
@@ -116,6 +124,10 @@ public class Course {
 
     public void setEnrollKey(String enrollKey) {
         this.enrollKey = enrollKey;
+    }
+
+    public void setTeacher(User teacher) {
+        this.teacher = teacher;
     }
 
     public User getTeacher() {

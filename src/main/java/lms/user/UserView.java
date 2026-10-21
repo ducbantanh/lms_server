@@ -1,6 +1,7 @@
 package lms.user;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 /**
  * Dữ liệu user trả về client. Dùng publicId thay cho id nội bộ; không bao giờ có password hash.
@@ -13,6 +14,7 @@ public record UserView(
         String roleName,
         int status,
         boolean mustChangePassword,
+        LocalDate birthDate,
         Instant createdAt,
         Instant lastLoginAt) {
 
@@ -25,6 +27,7 @@ public record UserView(
                 u.getRole().name(),
                 u.getStatus(),
                 u.isMustChangePassword(),
+                u.getBirthDate(),
                 u.getCreatedAt(),
                 u.getLastLoginAt());
     }

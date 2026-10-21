@@ -14,6 +14,9 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Enrollme
 
     long countByCourseId(long courseId);
 
+    /** Ghi danh của nhiều khóa học (tổng quan giảng viên). */
+    List<Enrollment> findByCourseIdIn(Collection<Long> courseIds);
+
     /** Số sinh viên theo từng khóa học: [courseId, count]. */
     @Query("select e.courseId, count(e) from Enrollment e where e.courseId in :ids group by e.courseId")
     List<Object[]> countByCourseIds(@Param("ids") Collection<Long> ids);

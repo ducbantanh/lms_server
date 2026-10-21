@@ -77,8 +77,25 @@ public class Assessment {
         createdAt = Instant.now();
     }
 
+    /** Sửa bài; loại bài và đề không đổi được (đổi đề thì xóa và tạo bài mới). */
+    public void update(String title, String description, Instant opensAt, Instant closesAt) {
+        this.title = title;
+        this.description = description;
+        this.opensAt = opensAt;
+        this.closesAt = closesAt;
+    }
+
+    /** Bài kiểm tra đã kết thúc là hồ sơ thi: không sửa, không xóa. Bài tập/thực hành sửa lúc nào cũng được. */
+    public boolean isLocked(Instant now) {
+        return type == TYPE_EXAM && isClosed(now);
+    }
+
     public boolean isOpened(Instant now) {
         return opensAt == null || !opensAt.isAfter(now);
+    }
+
+    public boolean isClosed(Instant now) {
+        return isOpened(now) && closesAt != null && closesAt.isBefore(now);
     }
 
     /** upcoming / open / closed, khớp ASSESSMENT_STATUS ở client. */
@@ -86,7 +103,11 @@ public class Assessment {
         if (!isOpened(now)) {
             return "upcoming";
         }
-        return closesAt != null && closesAt.isBefore(now) ? "closed" : "open";
+        return isClosed(now) ? "closed" : "open";
+    }
+
+    public boolean isDeletable(Instant now) {
+        return !isLocked(now);
     }
 
     public Long getId() {
