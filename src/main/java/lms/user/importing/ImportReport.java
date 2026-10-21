@@ -9,8 +9,8 @@ import java.util.List;
 public record ImportReport(
         int totalLines,
         List<CreatedRow> created,
-        List<StudentImportParser.LineIssue> duplicates,
-        List<StudentImportParser.LineIssue> errors) {
+        List<AccountImportParser.LineIssue> duplicates,
+        List<AccountImportParser.LineIssue> errors) {
 
     public record CreatedRow(int line, String username, String fullName) {
     }

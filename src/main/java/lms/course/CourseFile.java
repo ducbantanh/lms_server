@@ -17,6 +17,11 @@ import lms.common.RandomTokens;
 @Table(name = "course_files")
 public class CourseFile {
 
+    /** Tài liệu của khóa học (nằm trong mục/bài học). */
+    public static final int KIND_MATERIAL = 0;
+    /** Đề tải lên riêng cho một bài; chỉ truy cập qua bài đó. */
+    public static final int KIND_PAPER = 1;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -30,6 +35,13 @@ public class CourseFile {
     /** NULL = chưa phân mục. */
     @Column(name = "section_id")
     private Long sectionId;
+
+    /** NULL = tài liệu nằm trực tiếp trong mục; khác NULL thì sectionId luôn bằng mục của bài. */
+    @Column(name = "lesson_id")
+    private Long lessonId;
+
+    @Column(nullable = false, updatable = false)
+    private int kind = KIND_MATERIAL;
 
     @Column(nullable = false, length = 255)
     private String name;
@@ -53,15 +65,23 @@ public class CourseFile {
         // JPA
     }
 
-    public CourseFile(long courseId, Long sectionId, String name, String contentType, long size, boolean hidden,
-            String storageKey) {
+    public CourseFile(long courseId, Long sectionId, Long lessonId, String name, String contentType, long size,
+            boolean hidden, String storageKey) {
         this.courseId = courseId;
         this.sectionId = sectionId;
+        this.lessonId = lessonId;
         this.name = name;
         this.contentType = contentType;
         this.size = size;
         this.hidden = hidden;
         this.storageKey = storageKey;
+    }
+
+    /** Đề riêng của một bài: ẩn, không thuộc mục hay bài học nào. */
+    public static CourseFile paper(long courseId, String name, long size, String storageKey) {
+        CourseFile f = new CourseFile(courseId, null, null, name, CourseContentService.PDF, size, true, storageKey);
+        f.kind = KIND_PAPER;
+        return f;
     }
 
     @PrePersist
@@ -86,6 +106,14 @@ public class CourseFile {
 
     public Long getSectionId() {
         return sectionId;
+    }
+
+    public Long getLessonId() {
+        return lessonId;
+    }
+
+    public boolean isPaper() {
+        return kind == KIND_PAPER;
     }
 
     public String getName() {

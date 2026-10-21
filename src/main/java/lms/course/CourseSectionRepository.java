@@ -1,5 +1,6 @@
 package lms.course;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -10,6 +11,8 @@ import org.springframework.data.repository.query.Param;
 public interface CourseSectionRepository extends JpaRepository<CourseSection, Long> {
 
     List<CourseSection> findByCourseIdOrderByPosition(long courseId);
+
+    List<CourseSection> findByCourseIdIn(Collection<Long> courseIds);
 
     Optional<CourseSection> findByPublicIdAndCourseId(String publicId, long courseId);
 

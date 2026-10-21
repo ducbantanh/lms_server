@@ -20,4 +20,14 @@ public interface CourseFileRepository extends JpaRepository<CourseFile, Long> {
     @Modifying
     @Query("update CourseFile f set f.sectionId = null where f.sectionId = :sectionId")
     int detachFromSection(@Param("sectionId") long sectionId);
+
+    /** Xóa bài: tài liệu đính kèm giữ lại trong mục của bài. */
+    @Modifying
+    @Query("update CourseFile f set f.lessonId = null where f.lessonId = :lessonId")
+    int detachFromLesson(@Param("lessonId") long lessonId);
+
+    /** Bài chuyển mục: tài liệu đính kèm đi theo để sectionId luôn khớp với bài. */
+    @Modifying
+    @Query("update CourseFile f set f.sectionId = :sectionId where f.lessonId = :lessonId")
+    int moveWithLesson(@Param("lessonId") long lessonId, @Param("sectionId") Long sectionId);
 }

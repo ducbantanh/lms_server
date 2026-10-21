@@ -54,10 +54,12 @@ src/main/java/lms/
 ├── user/              P4  User, AdminUserController, UserAdminService
 │   └── importing/     P4  StudentImportParser (Java thuần), StudentImportService
 ├── audit/             P1  AuditService, AuditController
-├── course/                Khóa học: mục/tuần, tài liệu (FileStorage), bài kiểm tra, ghi danh, /teacher/**, /files/**
-└── student/           P6  API sinh viên: dashboard, nội dung khóa học, tham gia bằng mã
+├── course/                Khóa học: mục/tuần, bài học, tài liệu (FileStorage), bài kiểm tra, ghi danh, /teacher/**, /files/**
+├── student/           P6  API sinh viên: dashboard, nội dung khóa học, tham gia bằng mã
+├── submission/            Sinh viên làm bài (xem đề, nộp file) và giảng viên chấm điểm; /student/assessments/**, /teacher/.../submissions/**, /submission-files/**
+└── notification/          Thông báo: tự động khi tạo bài, tùy chọn khi thêm nội dung, giảng viên soạn; /notifications/**, /teacher/.../notifications
 src/main/resources/
-├── db/migration/      P1  V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học
+├── db/migration/      P1  V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học, V5 bài học, V6 đề riêng của bài, V7 bài nộp, V8 chấm điểm, V9 thông báo
 └── static/            P5, P6  frontend build (AdminLTE / Next export) đặt ở đây
 ```
 
@@ -115,13 +117,27 @@ Frontend hiển thị thông báo dựa vào `error.code`. Không hiển thị `
 | GET | `/admin/presence` | `presence.view` | Danh sách user đang online |
 | GET | `/admin/audit?page=&size=` | `audit.view` | Audit log |
 | GET | `/student/dashboard` | `courses.view` | Profile + khóa học đã ghi danh `{id, code, title, teacherName}` |
-| GET | `/student/courses/{id}` | `courses.view` | Nội dung khóa học đã ghi danh; không có file bị ẩn và đề của bài chưa mở |
+| GET | `/student/courses/{id}` | `courses.view` | Nội dung khóa học đã ghi danh; không có bài học/file bị ẩn (kể cả file của bài bị ẩn) và đề của bài chưa mở |
 | POST | `/student/courses/join` | `courses.view` | `{key}`: tự ghi danh bằng mã tham gia; sai mã → `INVALID_ENROLL_KEY` |
+| GET | `/student/assessments?course={courseId}` | `submissions.create` | `[{assessmentId, status, submittedAt, score}]`: trạng thái và điểm của mình ở mọi bài của khóa học đã ghi danh (cột phải trang khóa học) |
+| GET | `/student/assessments/{id}` | `submissions.create` | `{course, assessment, submission, serverTime}`; đề chỉ có khi bài mở; `submission.status`: `not_started` / `in_progress` / `submitted` / `auto_submitted` (hết giờ, file đã tải tính là bài nộp) / `missed` |
+| POST | `/student/assessments/{id}/files` | `submissions.create` | multipart `file`: PDF/DOCX/PPTX/ZIP ≤ 20 MB, tối đa 10 file; chỉ khi bài đang mở và chưa nộp (`ASSESSMENT_NOT_OPEN` / `SUBMISSION_LOCKED`) |
+| DELETE | `/student/assessments/{id}/files/{fileId}` | `submissions.create` | Xóa file bài làm (cùng điều kiện như trên) |
+| POST | `/student/assessments/{id}/submit` | `submissions.create` | Nộp bài (cần ≥ 1 file), sau đó khóa bài làm; ghi audit `submission.submitted` |
+| GET | `/teacher/courses/{id}/assessments/{assessmentId}/submissions` | `courses.manage` + `submissions.manage` | `{course, assessment, summary, rows}`: mọi sinh viên đã ghi danh kèm trạng thái, file, điểm; `summary` = số sinh viên / đã nộp / đã chấm / điểm trung bình |
+| PUT | `/teacher/courses/{id}/assessments/{assessmentId}/submissions/{studentId}/grade` | `courses.manage` + `submissions.manage` | `{score, feedback}`: thang 0–10, tối đa 2 chữ số thập phân; `score: null` xóa điểm. Chỉ chấm bài đã chốt (đã nộp, hết giờ, không nộp), còn lại `SUBMISSION_NOT_FINAL`; ghi audit `submission.graded` |
+| GET | `/notifications?category=&unread=&page=&size=` | `courses.view` | Thông báo của mình, mới nhất trước; `category`: `exam` / `lab` / `practice` / `content` / `announcement` |
+| GET | `/notifications/summary` | `courses.view` | `{unread, byCategory}`: số chưa đọc tổng và theo loại |
+| POST | `/notifications/{id}/read`, `/notifications/read-all` | `courses.view` | Đánh dấu đã đọc một / tất cả |
+| GET, POST | `/teacher/courses/{id}/notifications` | `courses.manage` | Lịch sử thông báo của khóa học kèm số đã đọc / gửi `{title, body, studentIds?}` (bỏ trống `studentIds` = cả lớp) |
+| GET | `/submission-files/{id}` | `courses.view` | Tải file bài làm (luôn tải về); chỉ chủ bài nộp hoặc người quản lý khóa học |
 | GET | `/files/{id}` | `courses.view` | Tải tài liệu; PDF trả inline, DOCX/PPTX tải về; kiểm tra quyền mỗi lần tải |
 | GET, POST | `/teacher/courses` | `courses.manage` | Danh sách khóa học mình phụ trách (admin: tất cả); tạo `{code, title, description, format}` |
-| GET, DELETE | `/teacher/courses/{id}` | `courses.manage` | Chi tiết `{course, sections, files, assessments}`; xóa cả file trên đĩa |
-| POST, DELETE | `/teacher/courses/{id}/sections[/{sectionId}]` | `courses.manage` | Thêm `{title}` / xóa mục (file trong mục chuyển về "chưa phân mục") |
-| POST | `/teacher/courses/{id}/files` | `courses.manage` | multipart `file` + `sectionId?` + `hidden`; chỉ PDF/DOCX/PPTX ≤ 20 MB |
+| GET, DELETE | `/teacher/courses/{id}` | `courses.manage` | Chi tiết `{course, sections, lessons, files, assessments}`; xóa cả file trên đĩa |
+| POST, DELETE | `/teacher/courses/{id}/sections[/{sectionId}]` | `courses.manage` | Thêm `{title}` / xóa mục (bài học và file trong mục chuyển về "chưa phân mục") |
+| POST | `/teacher/courses/{id}/lessons` | `courses.manage` | Tạo bài `{sectionId?, title, body?, hidden, notifyStudents}`; bài mới xếp cuối mục; khóa học "chỉ danh sách file" không có bài |
+| PUT, DELETE | `/teacher/courses/{id}/lessons/{lessonId}` | `courses.manage` | Ghi đè bài (đổi mục thì xuống cuối mục mới, file đính kèm đi theo) / xóa bài (file đính kèm giữ lại trong mục) |
+| POST | `/teacher/courses/{id}/files` | `courses.manage` | multipart `file` + `sectionId?` + `lessonId?` + `hidden` + `notifyStudents`; có `lessonId` thì file đính kèm bài và nằm trong mục của bài; chỉ PDF/DOCX/PPTX ≤ 20 MB |
 | PATCH, DELETE | `/teacher/courses/{id}/files/{fileId}` | `courses.manage` | `{hidden}` ẩn/hiện; xóa tài liệu |
 | GET | `/teacher/students?q=` | `courses.manage` | Tìm tài khoản sinh viên để ghi danh |
 | GET | `/teacher/courses/{id}/students` | `courses.manage` | Danh sách ghi danh kèm cách thêm (`method` 0 dán, 1 chọn, 2 mã) |
@@ -129,7 +145,8 @@ Frontend hiển thị thông báo dựa vào `error.code`. Không hiển thị `
 | POST | `/teacher/courses/{id}/students` | `courses.manage` | `{userIds}`: ghi danh theo danh sách đã chọn |
 | DELETE | `/teacher/courses/{id}/students/{userId}` | `courses.manage` | Bỏ ghi danh |
 | POST, DELETE | `/teacher/courses/{id}/enroll-key` | `courses.manage` | Tạo mã mới (mã cũ hết hiệu lực) / tắt mã |
-| POST, DELETE | `/teacher/courses/{id}/assessments[/{assessmentId}]` | `courses.manage` | Tạo `{type, title, description, paperFileId, opensAt, closesAt}` / xóa; bài thi bắt buộc có đề PDF và đề tự bị ẩn |
+| POST, DELETE | `/teacher/courses/{id}/assessments[/{assessmentId}]` | `courses.manage` | Tạo `{type, title, description, paperFileId, opensAt, closesAt, notifyStudents}` (bài kiểm tra, bài thực hành luôn thông báo; bài tập chỉ khi `notifyStudents`) / xóa; bài thi bắt buộc có đề PDF và đề tự bị ẩn; bài thi đã kết thúc (quá `closesAt`) không xóa được → `ASSESSMENT_CLOSED` |
+| POST | `/teacher/courses/{id}/assessments` (multipart) | `courses.manage` | Tạo bài kèm đề từ máy: part `data` (JSON như trên, `paperFileId` bị bỏ qua) + part `paper` (PDF). Đề chỉ thuộc bài này: không có trong `files`, không sửa/xóa qua API tài liệu, không dùng lại cho bài khác, xóa bài thì xóa đề |
 
 **Định dạng import:** mỗi dòng `student_id|ddmmyyyy|Full name`. Dòng trống và dòng bắt đầu bằng `#` bị bỏ qua. Kết quả trả về chia 3 nhóm:
 
@@ -154,6 +171,7 @@ Sự kiện server gửi về có dạng `{ "type": "...", "data": {...}, "ts": 
 | `connected` | chính socket đó | `{userId}` |
 | `presence.changed` | user có `presence.view` | `{userId, username, fullName, role, online, connections}` |
 | `session.revoked` | các socket của session bị thu hồi | `{reason}`: `logout` / `forced` / `locked` / `deleted` / `password_changed` / `expired` |
+| `notification.created` | người nhận thông báo | `{id, category, title, body, course, assessmentId, senderName, createdAt, read}` |
 | `pong` | trả lời `{"type":"ping"}` | `null` |
 
 Một số quy tắc cho phía client:
@@ -180,10 +198,60 @@ APP_FORWARD_HEADERS=native
 
 Nginx cần chuyển tiếp header `Upgrade` và `Connection` cho `/ws`, và đặt `proxy_read_timeout` lớn hơn 60s.
 
-## 7. Việc tiếp theo (gợi ý)
+## 7. Backup & restore
+
+Dữ liệu gồm hai phần phải đi cùng nhau: database MySQL và thư mục file `data/files` (tài liệu, đề, bài nộp; DB chỉ giữ `storage_key`). Script trong `scripts/` (PowerShell, Windows) đọc kết nối DB và thư mục file từ `.env` giống server. MySQL chạy trong Docker thì thêm `-DockerContainer lms-mysql`.
+
+Nếu PowerShell chặn chạy script, gọi qua `powershell -ExecutionPolicy Bypass -File <script>`.
+
+| Script | Việc |
+|---|---|
+| `backup.ps1` | Dump DB (`--single-transaction`, không cần dừng server) rồi copy file → `backups/lms-backup-<thời điểm>.zip` kèm `manifest.json` (version schema, sha256). Giữ 14 bản gần nhất (`-Keep`). |
+| `restore.ps1 -BackupFile <zip>` | Kiểm tra checksum, từ chối nếu schema backup mới hơn code, yêu cầu server đã dừng, tự backup trạng thái hiện tại (`-pre-restore`), thay DB + thư mục file, xóa bảng `sessions`. |
+| `verify.ps1` | Đối chiếu `storage_key` trong DB với file trên đĩa. Thiếu file → exit code 1. |
+| `test-restore.ps1` | Khôi phục bản mới nhất vào database tạm `lms_restore_test` + thư mục tạm, kiểm tra, rồi xóa. Không đụng hệ thống đang dùng. |
+
+Mỗi lần backup, restore và test-restore đều ghi một dòng vào `audit_logs` (`system.backup`, `system.restored`, `system.restore_tested`).
+
+**Chuẩn bị một lần** (bằng root): cấp quyền cho database tạm để chạy `test-restore.ps1`.
+
+```sql
+CREATE DATABASE lms_restore_test;
+GRANT ALL ON lms_restore_test.* TO 'lms'@'localhost';
+```
+
+**Lịch chạy** (Task Scheduler, chạy khi user đang đăng nhập):
+
+```
+schtasks /Create /TN "LMS backup" /SC DAILY /ST 23:00 /TR "powershell -NoProfile -ExecutionPolicy Bypass -File F:\LMS\lms_server\scripts\backup.ps1 -OutDir D:\lms-backups"
+schtasks /Create /TN "LMS restore test" /SC WEEKLY /D SUN /ST 23:30 /TR "powershell -NoProfile -ExecutionPolicy Bypass -File F:\LMS\lms_server\scripts\test-restore.ps1 -BackupDir D:\lms-backups"
+```
+
+**Khôi phục khi có sự cố:**
+
+1. Dừng server.
+2. `.\scripts\restore.ps1 -BackupFile D:\lms-backups\lms-backup-<thời điểm>.zip` rồi gõ tên database để xác nhận.
+3. Khởi động server. Nếu code mới hơn backup, Flyway tự migrate tiếp. Mọi người phải đăng nhập lại.
+
+**Lưu ý:**
+
+- Backup chứa hash mật khẩu, thông tin sinh viên và bài nộp. Đặt `-OutDir` ở ổ/máy khác, giới hạn quyền đọc, không đặt trong thư mục web.
+- `.env` không nằm trong backup: cất riêng.
+- Code cần thêm bảng có file trên đĩa thì cập nhật truy vấn trong `Get-StorageReport` (`scripts/lms-common.ps1`).
+
+## 8. Việc tiếp theo (gợi ý)
 
 - [ ] P5/P6: build frontend vào `src/main/resources/static/` rồi xóa `dev-console.html`.
 - [ ] Integration test với Testcontainers MySQL (login, revoke, permission boundary).
 - [ ] Rate limit cho endpoint import.
 - [x] Giai đoạn 2: module `course/` (V4): khóa học, mục/tuần, tài liệu, bài kiểm tra, ghi danh 3 cách.
-- [ ] Giai đoạn 3: `submissions/`: sinh viên nộp bài, giảng viên chấm và nhận xét.
+- [x] Giai đoạn 2: bài học (V5): nội dung văn bản + tài liệu đính kèm trong từng mục/tuần.
+- [x] Giai đoạn 2: sửa thông tin khóa học, đổi tên/sắp xếp mục, sắp xếp bài học, sửa bài (trừ bài thi đã kết thúc).
+- [x] Giai đoạn 2: backup/restore (`scripts/`): DB + thư mục file, kiểm tra checksum. Còn chạy thử `test-restore.ps1`.
+- [x] Giai đoạn 2: `submission/` (V7): sinh viên làm bài kiểm tra, nộp file.
+- [x] Giai đoạn 2: chấm điểm thủ công (V8): giảng viên xem bài nộp, chấm điểm + nhận xét; sinh viên xem điểm.
+- [x] Giai đoạn 2: thông báo (V9), tiến độ học (V10, `progress/`).
+- [x] Giai đoạn 2: `report/`: bảng điểm CSV (`GET /teacher/courses/{id}/gradebook.csv`), ZIP bài đã nộp
+  (`GET /teacher/courses/{id}/assessments/{aid}/submissions.zip`).
+- [x] Giai đoạn 2: audit mọi thao tác thay đổi dữ liệu (trừ đánh dấu đã học, đã đọc thông báo);
+  `GET /admin/audit?category=&q=` và trang `/admin/audit/`.
