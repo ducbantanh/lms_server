@@ -38,6 +38,12 @@ public enum ErrorCode {
     ASSESSMENT_NOT_OPEN(HttpStatus.CONFLICT, "Assessment is not open yet"),
     SUBMISSION_LOCKED(HttpStatus.CONFLICT, "Submission already submitted or time is over"),
     SUBMISSION_NOT_FINAL(HttpStatus.CONFLICT, "Submission is still in progress"),
+    /** Mã QR điểm danh sai, hết hạn (quá 2 chu kỳ 10 giây) hoặc không phải mã của hệ thống. */
+    ATTENDANCE_CODE_INVALID(HttpStatus.BAD_REQUEST, "Attendance code is invalid or expired"),
+    /** Giảng viên đã dừng điểm danh bằng QR của buổi này. */
+    ATTENDANCE_CLOSED(HttpStatus.CONFLICT, "QR check-in is closed for this session"),
+    /** Quét mã điểm danh của khóa học mình không có tên trong danh sách. */
+    NOT_ENROLLED(HttpStatus.FORBIDDEN, "You are not enrolled in this course"),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
 
     private final HttpStatus status;
