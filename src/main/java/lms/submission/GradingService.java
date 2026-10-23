@@ -86,7 +86,7 @@ public class GradingService {
             User u = (User) row[1];
             return row(a, u, byUser.get(u.getId()), filesBySubmission, graders, now);
         }).toList();
-        return new AssessmentSubmissions(new CourseRef(c.getPublicId(), c.getCode(), c.getTitle()),
+        return new AssessmentSubmissions(new CourseRef(c.getPublicId(), c.displayCode(), c.getTitle()),
                 teacherView(a, now), summary(rows), rows, CourseService.isTeacherOf(c, me));
     }
 
@@ -118,7 +118,7 @@ public class GradingService {
                     me.userId(), now);
         }
         submissions.flush();
-        audit.record(me.userId(), AuditService.SUBMISSION_GRADED, c.getCode(),
+        audit.record(me.userId(), AuditService.SUBMISSION_GRADED, c.displayCode(),
                 a.getTitle() + " · " + student.getUsername() + " = "
                         + (req.score() == null ? "(xóa điểm)" : req.score().toPlainString()),
                 ip);

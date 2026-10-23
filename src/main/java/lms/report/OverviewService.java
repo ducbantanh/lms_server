@@ -110,14 +110,14 @@ public class OverviewService {
                 }
             }
             if (pending > 0) {
-                tasks.add(new GradingTask(c.getPublicId(), c.getCode(), a.getPublicId(), a.getType(), a.getTitle(),
+                tasks.add(new GradingTask(c.getPublicId(), c.displayCode(), a.getPublicId(), a.getType(), a.getTitle(),
                         a.getClosesAt(), pending, submitted, students.size()));
                 pendingByCourse.merge(c.getId(), pending, Integer::sum);
             }
             String status = a.statusAt(now);
             boolean upcomingSoon = "upcoming".equals(status) && a.getOpensAt().isBefore(horizon);
             if ("open".equals(status) || upcomingSoon) {
-                schedule.add(new ScheduleItem(c.getPublicId(), c.getCode(), a.getPublicId(), a.getType(),
+                schedule.add(new ScheduleItem(c.getPublicId(), c.displayCode(), a.getPublicId(), a.getType(),
                         a.getTitle(), "open".equals(status) ? "open" : "upcoming", a.getOpensAt(), a.getClosesAt(),
                         submitted, students.size()));
             }
@@ -130,8 +130,8 @@ public class OverviewService {
         schedule.sort(Comparator.comparing(OverviewService::scheduleTime, Comparator.nullsLast(Comparator.naturalOrder())));
 
         Map<Long, Integer> average = progress.averagePercent(list, enrolled);
-        List<CourseRow> rows = list.stream().map(c -> new CourseRow(c.getPublicId(), c.getCode(), c.getTitle(),
-                c.getFormat(), c.getTeacher() == null ? null : c.getTeacher().getFullName(),
+        List<CourseRow> rows = list.stream().map(c -> new CourseRow(c.getPublicId(), c.getCode(), c.getGroupName(),
+                c.getTitle(), c.getFormat(), c.getTeacher() == null ? null : c.getTeacher().getFullName(),
                 enrolled.getOrDefault(c.getId(), Set.of()).size(), average.get(c.getId()),
                 pendingByCourse.getOrDefault(c.getId(), 0), openByCourse.getOrDefault(c.getId(), 0),
                 c.getCreatedAt())).toList();

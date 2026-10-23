@@ -24,8 +24,8 @@ public final class OverviewViews {
     }
 
     /** averageProgress null khi khóa chưa có sinh viên hoặc chưa có bài học/bài kiểm tra. */
-    public record CourseRow(String id, String code, String title, int format, String teacherName, int studentCount,
-            Integer averageProgress, int toGrade, int openAssessments, Instant createdAt) {
+    public record CourseRow(String id, String code, String group, String title, int format, String teacherName,
+            int studentCount, Integer averageProgress, int toGrade, int openAssessments, Instant createdAt) {
     }
 
     /** toGradeMore / scheduleMore: số mục bị cắt khỏi danh sách (chỉ trả tối đa LIST_LIMIT mục). */

@@ -84,7 +84,7 @@ public class CourseContentService {
         }
         CourseSection s = sections.save(new CourseSection(c.getId(), sections.maxPosition(c.getId()) + 1,
                 title.trim()));
-        audit.record(me.userId(), AuditService.SECTION_CREATED, c.getCode(), s.getTitle());
+        audit.record(me.userId(), AuditService.SECTION_CREATED, c.displayCode(), s.getTitle());
         return sectionView(s);
     }
 
@@ -94,7 +94,7 @@ public class CourseContentService {
         CourseSection s = requireSection(c, sectionId);
         String before = s.getTitle();
         s.setTitle(title.trim());
-        audit.record(me.userId(), AuditService.SECTION_UPDATED, c.getCode(), before + " → " + s.getTitle());
+        audit.record(me.userId(), AuditService.SECTION_UPDATED, c.displayCode(), before + " → " + s.getTitle());
         return sectionView(s);
     }
 
@@ -107,7 +107,7 @@ public class CourseContentService {
         for (int i = 0; i < ids.size(); i++) {
             byId.get(ids.get(i)).setPosition(i + 1);
         }
-        audit.record(me.userId(), AuditService.SECTIONS_REORDERED, c.getCode(), null);
+        audit.record(me.userId(), AuditService.SECTIONS_REORDERED, c.displayCode(), null);
         return ids.stream().map(byId::get).map(CourseContentService::sectionView).toList();
     }
 
@@ -119,7 +119,7 @@ public class CourseContentService {
         lessons.detachFromSection(s.getId());
         files.detachFromSection(s.getId());
         sections.delete(s);
-        audit.record(me.userId(), AuditService.SECTION_DELETED, c.getCode(), s.getTitle());
+        audit.record(me.userId(), AuditService.SECTION_DELETED, c.displayCode(), s.getTitle());
     }
 
     private CourseSection requireSection(Course c, String sectionId) {
@@ -147,7 +147,7 @@ public class CourseContentService {
         if (req.notifyStudents() && !req.hidden()) {
             notifications.lessonCreated(c, l.getTitle(), s == null ? null : s.getTitle(), me.userId());
         }
-        audit.record(me.userId(), AuditService.LESSON_CREATED, c.getCode(), l.getTitle());
+        audit.record(me.userId(), AuditService.LESSON_CREATED, c.displayCode(), l.getTitle());
         return CourseService.lessonView(l, s == null ? null : s.getPublicId());
     }
 
@@ -168,7 +168,7 @@ public class CourseContentService {
         l.setHidden(req.hidden());
         // flush để @PreUpdate cập nhật updatedAt trước khi trả về
         lessons.saveAndFlush(l);
-        audit.record(me.userId(), AuditService.LESSON_UPDATED, c.getCode(), l.getTitle()
+        audit.record(me.userId(), AuditService.LESSON_UPDATED, c.displayCode(), l.getTitle()
                 + (wasHidden == l.isHidden() ? "" : l.isHidden() ? " (ẩn)" : " (hiện)"));
         return CourseService.lessonView(l, s == null ? null : s.getPublicId());
     }
@@ -185,7 +185,7 @@ public class CourseContentService {
         for (int i = 0; i < ids.size(); i++) {
             byId.get(ids.get(i)).setPosition(i + 1);
         }
-        audit.record(me.userId(), AuditService.LESSONS_REORDERED, c.getCode(),
+        audit.record(me.userId(), AuditService.LESSONS_REORDERED, c.displayCode(),
                 s == null ? "Chưa phân mục" : s.getTitle());
     }
 
@@ -196,7 +196,7 @@ public class CourseContentService {
         Lesson l = requireLesson(c, lessonId);
         files.detachFromLesson(l.getId());
         lessons.delete(l);
-        audit.record(me.userId(), AuditService.LESSON_DELETED, c.getCode(), l.getTitle());
+        audit.record(me.userId(), AuditService.LESSON_DELETED, c.displayCode(), l.getTitle());
     }
 
     private Lesson requireLesson(Course c, String lessonId) {
@@ -251,7 +251,7 @@ public class CourseContentService {
                 notifications.fileUploaded(c, f.getName(),
                         lesson != null ? lesson.getTitle() : section == null ? null : section.getTitle(), me.userId());
             }
-            audit.record(me.userId(), AuditService.FILE_UPLOADED, c.getCode(), f.getName() + (hidden ? " (ẩn)" : ""));
+            audit.record(me.userId(), AuditService.FILE_UPLOADED, c.displayCode(), f.getName() + (hidden ? " (ẩn)" : ""));
             return CourseService.fileView(f, section == null ? null : section.getPublicId(),
                     lesson == null ? null : lesson.getPublicId());
         } catch (RuntimeException e) {
@@ -265,7 +265,7 @@ public class CourseContentService {
         Course c = courses.requireTeaching(courseId, me);
         CourseFile f = requireMaterial(c, fileId);
         f.setHidden(hidden);
-        audit.record(me.userId(), hidden ? AuditService.FILE_HIDDEN : AuditService.FILE_SHOWN, c.getCode(),
+        audit.record(me.userId(), hidden ? AuditService.FILE_HIDDEN : AuditService.FILE_SHOWN, c.displayCode(),
                 f.getName());
     }
 
@@ -276,7 +276,7 @@ public class CourseContentService {
         CourseFile f = requireMaterial(c, fileId);
         files.delete(f);
         CourseService.afterCommit(() -> storage.deleteQuietly(f.getStorageKey()));
-        audit.record(me.userId(), AuditService.FILE_DELETED, c.getCode(), f.getName());
+        audit.record(me.userId(), AuditService.FILE_DELETED, c.displayCode(), f.getName());
     }
 
     /** Tài liệu của khóa học; đề riêng của bài không được quản lý qua API tài liệu (NOT_FOUND). */
@@ -333,7 +333,7 @@ public class CourseContentService {
                 CourseService.blankToNull(req.description()), paper == null ? null : paper.getId(),
                 req.opensAt(), req.closesAt()));
         notifications.assessmentCreated(c, a, req.notifyStudents(), me.userId());
-        audit.record(me.userId(), AuditService.ASSESSMENT_CREATED, c.getCode(), a.getTitle());
+        audit.record(me.userId(), AuditService.ASSESSMENT_CREATED, c.displayCode(), a.getTitle());
         return teacherView(a, paper);
     }
 
@@ -351,7 +351,7 @@ public class CourseContentService {
         }
         requireWindow(req.opensAt(), req.closesAt());
         a.update(req.title().trim(), CourseService.blankToNull(req.description()), req.opensAt(), req.closesAt());
-        audit.record(me.userId(), AuditService.ASSESSMENT_UPDATED, c.getCode(), a.getTitle() + " · mở "
+        audit.record(me.userId(), AuditService.ASSESSMENT_UPDATED, c.displayCode(), a.getTitle() + " · mở "
                 + (a.getOpensAt() == null ? "ngay" : a.getOpensAt()) + " · đóng "
                 + (a.getClosesAt() == null ? "không hạn" : a.getClosesAt()));
         CourseFile paper = a.getPaperFileId() == null ? null : files.findById(a.getPaperFileId()).orElse(null);
@@ -379,7 +379,7 @@ public class CourseContentService {
                 CourseService.afterCommit(() -> storage.deleteQuietly(f.getStorageKey()));
             });
         }
-        audit.record(me.userId(), AuditService.ASSESSMENT_DELETED, c.getCode(),
+        audit.record(me.userId(), AuditService.ASSESSMENT_DELETED, c.displayCode(),
                 a.getTitle() + " (" + submissionKeys.size() + " file bài nộp)");
     }
 

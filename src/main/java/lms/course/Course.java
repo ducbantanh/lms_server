@@ -34,6 +34,10 @@ public class Course {
     @Column(nullable = false, length = 32)
     private String code;
 
+    /** Nhóm của học phần (vd. "01"); null = không chia nhóm. Mã + nhóm là duy nhất. */
+    @Column(name = "group_name", length = 16)
+    private String groupName;
+
     @Column(nullable = false, length = 200)
     private String title;
 
@@ -92,6 +96,22 @@ public class Course {
 
     public void setCode(String code) {
         this.code = code;
+    }
+
+    public String getGroupName() {
+        return groupName;
+    }
+
+    public void setGroupName(String groupName) {
+        this.groupName = groupName;
+    }
+
+    /**
+     * Mã kèm nhóm cho nơi chỉ hiện một chuỗi (thông báo, bài nộp, nhật ký, tên file): "INT1340 · Nhóm 01".
+     * Client dùng cùng định dạng trong courseLabel() (lib/course-utils.ts).
+     */
+    public String displayCode() {
+        return groupName == null ? code : code + " · Nhóm " + groupName;
     }
 
     public String getTitle() {

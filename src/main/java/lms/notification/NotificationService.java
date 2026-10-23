@@ -126,7 +126,7 @@ public class NotificationService {
         }
         Notification n = send(c, Notification.CATEGORY_ANNOUNCEMENT, req.title().trim(),
                 CourseService.blankToNull(req.body()), (Assessment) null, me.userId(), targets);
-        audit.record(me.userId(), AuditService.NOTIFICATION_SENT, c.getCode(),
+        audit.record(me.userId(), AuditService.NOTIFICATION_SENT, c.displayCode(),
                 n.getTitle() + " → " + targets.size() + " sinh viên");
         return new SentView(n.getPublicId(), NotificationViews.CATEGORIES.get(n.getCategory()), n.getTitle(),
                 n.getBody(), me.fullName(), n.getCreatedAt(), targets.size(), 0);
@@ -246,7 +246,7 @@ public class NotificationService {
     private static NotificationView view(Notification n, Course c, String assessmentPublicId, String sender,
             boolean read) {
         return new NotificationView(n.getPublicId(), NotificationViews.CATEGORIES.get(n.getCategory()), n.getTitle(),
-                n.getBody(), c == null ? null : new CourseRef(c.getPublicId(), c.getCode(), c.getTitle()),
+                n.getBody(), c == null ? null : new CourseRef(c.getPublicId(), c.displayCode(), c.getTitle()),
                 assessmentPublicId, sender, n.getCreatedAt(), read);
     }
 }
