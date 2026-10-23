@@ -161,7 +161,7 @@ public class ReportService {
      * Một dòng CSV: bọc nháy kép khi có dấu phẩy, nháy, xuống dòng; ô bắt đầu bằng = + - @ được thêm ' phía trước
      * để Excel không chạy như công thức (họ tên, tiêu đề bài do người dùng nhập).
      */
-    static String csvLine(List<String> cells) {
+    public static String csvLine(List<String> cells) {
         return cells.stream().map(ReportService::csvCell).collect(Collectors.joining(",")) + "\r\n";
     }
 
@@ -174,7 +174,7 @@ public class ReportService {
     }
 
     /** Tên file/thư mục dùng được trên Windows: bỏ ký tự cấm và ký tự điều khiển, cắt còn 100 ký tự. */
-    static String fileSafe(String name) {
+    public static String fileSafe(String name) {
         String s = name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_").trim().replaceAll("[. ]+$", "");
         if (s.length() > 100) {
             s = s.substring(0, 100).trim();

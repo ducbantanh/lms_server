@@ -16,6 +16,8 @@ public record RealtimeEvent(String type, Object data, Instant ts) {
     /** Gửi ngay khi kết nối thành công. */
     public static final String CONNECTED = "connected";
     public static final String NOTIFICATION_CREATED = "notification.created";
+    /** Gửi cho giảng viên phụ trách khi sinh viên quét QR điểm danh (cập nhật màn chiếu và danh sách). */
+    public static final String ATTENDANCE_CHECKED_IN = "attendance.checked_in";
     public static final String PONG = "pong";
 
     public static RealtimeEvent of(String type, Object data) {

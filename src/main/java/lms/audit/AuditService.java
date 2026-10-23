@@ -63,6 +63,14 @@ public class AuditService {
     public static final String SUBMISSION_GRADED = "submission.graded";
     public static final String SUBMISSIONS_DOWNLOADED = "submission.downloaded";
     public static final String GRADES_EXPORTED = "grade.exported";
+    public static final String ATTENDANCE_SESSION_CREATED = "attendance.session_created";
+    public static final String ATTENDANCE_SESSION_UPDATED = "attendance.session_updated";
+    public static final String ATTENDANCE_SESSION_DELETED = "attendance.session_deleted";
+    public static final String ATTENDANCE_QR_OPENED = "attendance.qr_opened";
+    public static final String ATTENDANCE_QR_CLOSED = "attendance.qr_closed";
+    public static final String ATTENDANCE_CHECKED_IN = "attendance.checked_in";
+    public static final String ATTENDANCE_MARKED = "attendance.marked";
+    public static final String ATTENDANCE_EXPORTED = "attendance.exported";
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 

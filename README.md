@@ -57,9 +57,10 @@ src/main/java/lms/
 ├── course/                Khóa học: mục/tuần, bài học, tài liệu (FileStorage), bài kiểm tra, ghi danh, /teacher/**, /files/**
 ├── student/           P6  API sinh viên: dashboard, nội dung khóa học, tham gia bằng mã
 ├── submission/            Sinh viên làm bài (xem đề, nộp file) và giảng viên chấm điểm; /student/assessments/**, /teacher/.../submissions/**, /submission-files/**
+├── attendance/            Điểm danh theo buổi: mã QR đổi mỗi 10 giây (AttendanceQr), điểm danh thủ công; /teacher/.../attendance/**, /student/attendance/**
 └── notification/          Thông báo: tự động khi tạo bài, tùy chọn khi thêm nội dung, giảng viên soạn; /notifications/**, /teacher/.../notifications
 src/main/resources/
-├── db/migration/      P1  V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học, V5 bài học, V6 đề riêng của bài, V7 bài nộp, V8 chấm điểm, V9 thông báo
+├── db/migration/      P1  V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học, V5 bài học, V6 đề riêng của bài, V7 bài nộp, V8 chấm điểm, V9 thông báo, …, V14 điểm danh
 └── static/            P5, P6  frontend build (AdminLTE / Next export) đặt ở đây
 ```
 
@@ -131,6 +132,14 @@ Frontend hiển thị thông báo dựa vào `error.code`. Không hiển thị `
 | GET | `/notifications/summary` | `courses.view` | `{unread, byCategory}`: số chưa đọc tổng và theo loại |
 | POST | `/notifications/{id}/read`, `/notifications/read-all` | `courses.view` | Đánh dấu đã đọc một / tất cả |
 | GET, POST | `/teacher/courses/{id}/notifications` | `courses.manage` | Lịch sử thông báo của khóa học kèm số đã đọc / gửi `{title, body, studentIds?}` (bỏ trống `studentIds` = cả lớp) |
+| GET, POST | `/teacher/courses/{id}/attendance` | `courses.manage` | Danh sách buổi `{students, sessions}` kèm số có mặt / đi muộn / có phép (vắng = sĩ số − ba số đó) / tạo buổi `{title?, qr}` (trống = "Buổi N"; `qr` mở điểm danh QR ngay). Sửa, mở/dừng QR, điểm danh: chỉ giảng viên phụ trách (`TEACHER_ONLY`) |
+| GET, PUT, DELETE | `/teacher/courses/{id}/attendance/{sessionId}` | `courses.manage` | `{session, students, rows}`: mọi sinh viên đang ghi danh, `status` 0 có mặt / 1 đi muộn / 2 có phép / `null` vắng, `method` 0 quét QR / 1 thủ công, `ip` lúc quét / đổi tên `{title}` / xóa buổi |
+| POST | `/teacher/courses/{id}/attendance/{sessionId}/qr/open`, `/qr/close` | `courses.manage` | Mở / dừng điểm danh bằng QR; dừng thì mã đang chiếu hết dùng được ngay |
+| GET | `/teacher/courses/{id}/attendance/{sessionId}/qr` | `courses.manage` | `{course, session, token, expiresAt, serverTime, periodSeconds, checkedIn, students}` cho màn chiếu; gọi lại khi tới `expiresAt` (~10 giây). Buổi đã dừng QR → `ATTENDANCE_CLOSED` |
+| PUT | `/teacher/courses/{id}/attendance/{sessionId}/records` | `courses.manage` | `{studentIds, status}`: điểm danh thủ công một hoặc nhiều sinh viên (`status: null` = vắng); ghi audit `attendance.marked` |
+| GET | `/teacher/courses/{id}/attendance.csv` | `courses.manage` | Bảng điểm danh: mỗi sinh viên một dòng, mỗi buổi một cột, cuối là tổng theo trạng thái |
+| POST | `/student/attendance/check-in` | `courses.view` | `{token}` (phần `?t=` của link `/attend/?t=...` trong QR) → `{courseId, course, courseTitle, session, status, checkedAt, alreadyRecorded}`. Mã chỉ nhận trong chu kỳ 10 giây hiện tại và chu kỳ ngay trước; lỗi `ATTENDANCE_CODE_INVALID` / `ATTENDANCE_CLOSED` / `NOT_ENROLLED`. Quét lại không đổi trạng thái đã có |
+| GET | `/student/courses/{id}/attendance` | `courses.view` | `[{sessionId, title, createdAt, status, checkedAt}]`: điểm danh của mình, buổi cũ trước |
 | GET | `/submission-files/{id}` | `courses.view` | Tải file bài làm (luôn tải về); chỉ chủ bài nộp hoặc người quản lý khóa học |
 | GET | `/files/{id}` | `courses.view` | Tải tài liệu; PDF trả inline, DOCX/PPTX tải về; kiểm tra quyền mỗi lần tải |
 | GET, POST | `/teacher/courses` | `courses.manage` | Danh sách khóa học mình phụ trách (admin: tất cả); tạo `{code, group?, title, description, format, teacherId}` (chỉ admin). `group`: nhóm của học phần (≤ 16 ký tự, bỏ trống = không chia nhóm); trùng mã + nhóm → `COURSE_GROUP_TAKEN`. Sửa bằng `PUT /teacher/courses/{id}` cùng các trường (trừ `teacherId`). Nơi chỉ có một chuỗi mã (thông báo, bài nộp, nhật ký, tên file) hiện dạng `INT1340 · Nhóm 01` |
@@ -173,6 +182,7 @@ Sự kiện server gửi về có dạng `{ "type": "...", "data": {...}, "ts": 
 | `presence.changed` | user có `presence.view` | `{userId, username, fullName, role, online, connections}` |
 | `session.revoked` | các socket của session bị thu hồi | `{reason}`: `logout` / `forced` / `locked` / `deleted` / `password_changed` / `idle` (không hoạt động quá thời gian chờ của vai trò) / `expired` |
 | `notification.created` | người nhận thông báo | `{id, category, title, body, course, assessmentId, senderName, createdAt, read}` |
+| `attendance.checked_in` | giảng viên phụ trách khóa học | `{courseId, sessionId, row}`: sinh viên vừa quét QR điểm danh (`row` như một dòng của chi tiết buổi) |
 | `pong` | trả lời `{"type":"ping"}` | `null` |
 
 Một số quy tắc cho phía client:
