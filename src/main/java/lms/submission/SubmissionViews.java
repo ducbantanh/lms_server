@@ -32,8 +32,12 @@ public final class SubmissionViews {
     public record SubmissionFileView(String id, String name, String contentType, long size, Instant createdAt) {
     }
 
-    /** Điểm thang 10 và nhận xét; gradedBy là họ tên người chấm (null nếu tài khoản đã bị xóa). */
-    public record GradeView(BigDecimal score, String feedback, Instant gradedAt, String gradedBy) {
+    /**
+     * Điểm thang 10 và nhận xét; gradedBy là họ tên người chấm (null nếu tài khoản đã bị xóa, hoặc máy chấm).
+     * autoScore: điểm máy chấm của bài trắc nghiệm (null với bài nộp file); score khác autoScore = giảng viên đã sửa.
+     */
+    public record GradeView(BigDecimal score, String feedback, Instant gradedAt, String gradedBy,
+            BigDecimal autoScore) {
     }
 
     /** editable = còn thêm/xóa file và bấm nộp được; grade null = chưa chấm. */

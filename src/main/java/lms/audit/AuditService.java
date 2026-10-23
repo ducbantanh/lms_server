@@ -78,6 +78,9 @@ public class AuditService {
     public static final String QUESTION_UPDATED = "question.updated";
     public static final String QUESTIONS_DELETED = "question.deleted";
     public static final String QUESTIONS_IMPORTED = "question.imported";
+    public static final String QUIZ_STARTED = "submission.quiz_started";
+    /** Hết giờ làm bài trắc nghiệm mà chưa bấm nộp: server tự chốt và chấm (không có người thực hiện). */
+    public static final String QUIZ_TIMED_OUT = "submission.quiz_timed_out";
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 

@@ -26,6 +26,7 @@ import lms.course.CourseViews.LessonView;
 import lms.course.CourseViews.SectionView;
 import lms.course.UploadChecker.Checked;
 import lms.notification.NotificationService;
+import lms.quiz.QuizQuestionRepository;
 import lms.submission.SubmissionFileRepository;
 
 /**
@@ -50,6 +51,7 @@ public class CourseContentService {
     private final AssessmentRepository assessments;
     private final EnrollmentRepository enrollments;
     private final SubmissionFileRepository submissionFiles;
+    private final QuizQuestionRepository quizQuestions;
     private final FileStorage storage;
     private final UploadChecker uploads;
     private final NotificationService notifications;
@@ -59,8 +61,9 @@ public class CourseContentService {
             CourseSectionRepository sections, LessonRepository lessons, CourseFileRepository files,
             AssessmentRepository assessments, EnrollmentRepository enrollments,
             SubmissionFileRepository submissionFiles, FileStorage storage, UploadChecker uploads,
-            NotificationService notifications, AuditService audit) {
+            NotificationService notifications, AuditService audit, QuizQuestionRepository quizQuestions) {
         this.notifications = notifications;
+        this.quizQuestions = quizQuestions;
         this.courses = courses;
         this.courseRepo = courseRepo;
         this.sections = sections;
@@ -296,6 +299,7 @@ public class CourseContentService {
             AuthPrincipal me) {
         Course c = courses.requireTeaching(courseId, me);
         requireWindow(req.opensAt(), req.closesAt());
+        requireScoreRelease(req.scoreRelease(), req.closesAt());
         if (paperUpload != null) {
             Checked file = uploads.check(paperUpload, UploadChecker.MATERIAL);
             if (!PDF.equals(file.contentType())) {
@@ -329,9 +333,11 @@ public class CourseContentService {
         if (req.type() == Assessment.TYPE_EXAM && paper == null) {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "An exam needs a PDF paper");
         }
-        Assessment a = assessments.save(new Assessment(c.getId(), req.type(), req.title().trim(),
+        Assessment a = new Assessment(c.getId(), req.type(), req.title().trim(),
                 CourseService.blankToNull(req.description()), paper == null ? null : paper.getId(),
-                req.opensAt(), req.closesAt()));
+                req.opensAt(), req.closesAt());
+        a.setScoreRelease(req.scoreRelease());
+        a = assessments.save(a);
         notifications.assessmentCreated(c, a, req.notifyStudents(), me.userId());
         audit.record(me.userId(), AuditService.ASSESSMENT_CREATED, c.displayCode(), a.getTitle());
         return teacherView(a, paper);
@@ -388,6 +394,13 @@ public class CourseContentService {
                 .orElseThrow(() -> AppException.notFound("Assessment"));
     }
 
+    /** Công bố điểm sau giờ đóng mà bài không có giờ đóng thì không bao giờ tới lúc công bố: báo lỗi. */
+    public static void requireScoreRelease(int scoreRelease, Instant closesAt) {
+        if (scoreRelease == Assessment.SCORE_AFTER_CLOSE && closesAt == null) {
+            throw new AppException(ErrorCode.VALIDATION_FAILED, "Score release after close needs closesAt");
+        }
+    }
+
     private static void requireWindow(Instant opensAt, Instant closesAt) {
         if (opensAt != null && closesAt != null && !closesAt.isAfter(opensAt)) {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "closesAt must be after opensAt");
@@ -395,10 +408,9 @@ public class CourseContentService {
     }
 
     /** Góc nhìn giảng viên: luôn thấy đề. */
-    private static AssessmentView teacherView(Assessment a, CourseFile paper) {
-        return new AssessmentView(a.getPublicId(), a.getType(), a.getTitle(), a.getDescription(),
-                paper == null ? null : paper.getPublicId(), paper == null ? null : paper.getName(),
-                a.getOpensAt(), a.getClosesAt(), a.statusAt(Instant.now()));
+    private AssessmentView teacherView(Assessment a, CourseFile paper) {
+        return CourseViews.assessmentView(a, paper, a.isQuiz() ? quizQuestions.countByAssessmentId(a.getId()) : 0,
+                Instant.now());
     }
 
     // ---------------------------------------------------------------- tải file

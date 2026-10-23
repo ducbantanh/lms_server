@@ -21,6 +21,20 @@ public class Assessment {
     public static final int TYPE_LAB = 1;
     public static final int TYPE_EXAM = 2;
 
+    public static final int MODE_FILE = 0;
+    public static final int MODE_QUIZ = 1;
+
+    /** Bài trắc nghiệm: khi nào sinh viên được xem đáp án đúng và giải thích. */
+    public static final int REVEAL_NEVER = 0;
+    public static final int REVEAL_AFTER_SUBMIT = 1;
+    public static final int REVEAL_AFTER_CLOSE = 2;
+
+    /** Khi nào sinh viên thấy điểm và nhận xét (cột score_release). */
+    public static final int SCORE_IMMEDIATE = 0;
+    public static final int SCORE_AFTER_CLOSE = 1;
+    /** Không bao giờ: chỉ giảng viên thấy điểm (vd. bài kiểm tra lấy điểm để xét, không công bố). */
+    public static final int SCORE_NEVER = 2;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -33,6 +47,10 @@ public class Assessment {
 
     @Column(nullable = false)
     private int type;
+
+    /** MODE_FILE: nộp file; MODE_QUIZ: trắc nghiệm, câu hỏi ở lms.quiz.QuizQuestion. */
+    @Column(name = "answer_mode", nullable = false)
+    private int answerMode;
 
     @Column(nullable = false, length = 200)
     private String title;
@@ -51,6 +69,20 @@ public class Assessment {
     @Column(name = "closes_at")
     private Instant closesAt;
 
+    /** Trắc nghiệm: số phút làm bài tính từ lúc bấm "Bắt đầu"; NULL = làm tới giờ đóng. */
+    @Column(name = "time_limit_minutes")
+    private Integer timeLimitMinutes;
+
+    /** Trắc nghiệm: xáo thứ tự câu và đáp án theo từng sinh viên. */
+    @Column(nullable = false)
+    private boolean shuffle;
+
+    @Column(name = "reveal_mode", nullable = false)
+    private int revealMode;
+
+    @Column(name = "score_release", nullable = false)
+    private int scoreRelease;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -67,6 +99,18 @@ public class Assessment {
         this.paperFileId = paperFileId;
         this.opensAt = opensAt;
         this.closesAt = closesAt;
+    }
+
+    /** Bài trắc nghiệm: không có file đề; câu hỏi chép từ ngân hàng sau khi lưu bài. */
+    public static Assessment quiz(long courseId, int type, String title, String description, Instant opensAt,
+            Instant closesAt, Integer timeLimitMinutes, boolean shuffle, int revealMode, int scoreRelease) {
+        Assessment a = new Assessment(courseId, type, title, description, null, opensAt, closesAt);
+        a.answerMode = MODE_QUIZ;
+        a.timeLimitMinutes = timeLimitMinutes;
+        a.shuffle = shuffle;
+        a.revealMode = revealMode;
+        a.scoreRelease = scoreRelease;
+        return a;
     }
 
     @PrePersist
@@ -144,5 +188,55 @@ public class Assessment {
 
     public Instant getClosesAt() {
         return closesAt;
+    }
+
+    public int getAnswerMode() {
+        return answerMode;
+    }
+
+    public boolean isQuiz() {
+        return answerMode == MODE_QUIZ;
+    }
+
+    public Integer getTimeLimitMinutes() {
+        return timeLimitMinutes;
+    }
+
+    public boolean isShuffle() {
+        return shuffle;
+    }
+
+    public int getRevealMode() {
+        return revealMode;
+    }
+
+    public int getScoreRelease() {
+        return scoreRelease;
+    }
+
+    public void setScoreRelease(int scoreRelease) {
+        this.scoreRelease = scoreRelease;
+    }
+
+    /** Sinh viên được xem điểm chưa; công bố sau giờ đóng mà bài không có giờ đóng thì coi như công bố ngay. */
+    public boolean isScoreVisible(Instant now) {
+        return switch (scoreRelease) {
+            case SCORE_NEVER -> false;
+            case SCORE_AFTER_CLOSE -> closesAt == null || !now.isBefore(closesAt);
+            default -> true;
+        };
+    }
+
+    /**
+     * Hạn làm bài trắc nghiệm của một sinh viên đã bắt đầu: sớm hơn trong giờ đóng và giờ bắt đầu + số phút;
+     * null = không hạn.
+     */
+    public Instant deadlineFor(Instant startedAt) {
+        Instant byLimit = timeLimitMinutes == null || startedAt == null ? null
+                : startedAt.plusSeconds(timeLimitMinutes * 60L);
+        if (byLimit == null) {
+            return closesAt;
+        }
+        return closesAt == null || byLimit.isBefore(closesAt) ? byLimit : closesAt;
     }
 }
