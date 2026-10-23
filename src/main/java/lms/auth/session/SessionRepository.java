@@ -22,6 +22,16 @@ public interface SessionRepository extends JpaRepository<SessionEntity, Long> {
             """)
     Optional<SessionEntity> findValid(@Param("hash") String tokenHash, @Param("now") Instant now);
 
+    /** Như findValid nhưng theo id (tín hiệu hoạt động gửi qua WebSocket). */
+    @Query("""
+            select s from SessionEntity s join fetch s.user u
+            where s.id = :id
+              and s.revokedAt is null
+              and s.expiresAt > :now
+              and u.status = 1
+            """)
+    Optional<SessionEntity> findValidById(@Param("id") long id, @Param("now") Instant now);
+
     @Query("""
             select s.id from SessionEntity s join s.user u
             where s.id in :ids
@@ -52,6 +62,21 @@ public interface SessionRepository extends JpaRepository<SessionEntity, Long> {
             """)
     int revokeOthersForUser(@Param("userId") long userId, @Param("keepId") long keepId,
             @Param("now") Instant now, @Param("reason") String reason);
+
+    /**
+     * Admin đổi thời gian chờ của một vai trò: tính lại hạn mọi phiên còn hiệu lực của vai trò đó
+     * = min(lần hoạt động cuối + thời gian chờ mới, lúc tạo + thời hạn tuyệt đối).
+     * Phiên đã quá thời gian chờ mới thì hết hạn ngay; sweeper sẽ đóng socket của chúng.
+     */
+    @Modifying
+    @Query(value = """
+            UPDATE sessions s JOIN users u ON u.id = s.user_id
+            SET s.expires_at = LEAST(s.last_seen_at + INTERVAL :idleSeconds SECOND,
+                                     s.created_at + INTERVAL :absoluteSeconds SECOND)
+            WHERE u.role = :role AND s.revoked_at IS NULL AND s.expires_at > :now
+            """, nativeQuery = true)
+    int recomputeExpiry(@Param("role") int role, @Param("idleSeconds") long idleSeconds,
+            @Param("absoluteSeconds") long absoluteSeconds, @Param("now") Instant now);
 
     @Modifying
     @Query("delete from SessionEntity s where s.expiresAt < :before or s.revokedAt < :before")

@@ -56,6 +56,8 @@ server:
 app:
   session:
     cookie-name: SID
+    # Mặc định cho vai trò chưa đặt riêng (admin...); sinh viên/giảng viên do admin chỉnh ở trang Cài đặt
+    # (bảng roles, cột idle_timeout_minutes)
     idle-timeout: 2h
     absolute-timeout: 12h
     secure-cookie: ${APP_SECURE_COOKIE:false}

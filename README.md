@@ -115,6 +115,7 @@ Frontend hiển thị thông báo dựa vào `error.code`. Không hiển thị `
 | POST | `/admin/users/import` | `users.manage` | JSON `{content}` |
 | POST | `/admin/users/import-file` | `users.manage` | multipart, field `file` (.txt UTF-8) |
 | GET | `/admin/presence` | `presence.view` | Danh sách user đang online |
+| GET, PUT | `/admin/settings/idle-timeout` | `sessions.manage` | `{studentMinutes, teacherMinutes, minMinutes, maxMinutes}` / `{studentMinutes, teacherMinutes}`: thời gian tự đăng xuất khi không hoạt động (1 phút tới thời hạn tuyệt đối 12 giờ); áp dụng ngay cho phiên đang mở, ghi audit `session.idle_timeout_updated` |
 | GET | `/admin/audit?page=&size=` | `audit.view` | Audit log |
 | GET | `/student/dashboard` | `courses.view` | Profile + khóa học đã ghi danh `{id, code, title, teacherName}` |
 | GET | `/student/courses/{id}` | `courses.view` | Nội dung khóa học đã ghi danh; không có bài học/file bị ẩn (kể cả file của bài bị ẩn) và đề của bài chưa mở |
@@ -170,7 +171,7 @@ Sự kiện server gửi về có dạng `{ "type": "...", "data": {...}, "ts": 
 |---|---|---|
 | `connected` | chính socket đó | `{userId}` |
 | `presence.changed` | user có `presence.view` | `{userId, username, fullName, role, online, connections}` |
-| `session.revoked` | các socket của session bị thu hồi | `{reason}`: `logout` / `forced` / `locked` / `deleted` / `password_changed` / `expired` |
+| `session.revoked` | các socket của session bị thu hồi | `{reason}`: `logout` / `forced` / `locked` / `deleted` / `password_changed` / `idle` (không hoạt động quá thời gian chờ của vai trò) / `expired` |
 | `notification.created` | người nhận thông báo | `{id, category, title, body, course, assessmentId, senderName, createdAt, read}` |
 | `pong` | trả lời `{"type":"ping"}` | `null` |
 
@@ -180,6 +181,15 @@ Một số quy tắc cho phía client:
 - Đóng với mã khác thì reconnect có backoff (1s, 2s, 4s, ... tối đa 30s).
 - "Online" nghĩa là có ít nhất một socket đang mở, không phải "session còn hạn".
 - Server gửi WebSocket ping mỗi 30 giây và tự đóng socket nếu session hết hạn.
+- Khi người dùng thao tác trên trang (chuột, phím, cuộn, chạm), client gửi `{"type":"activity"}`, tối đa 1 lần/15 giây.
+  Server coi đó là hoạt động và gia hạn phiên như một request API, để người đang đọc bài không bị đăng xuất.
+
+**Tự đăng xuất khi không hoạt động.** Thời gian chờ đặt theo vai trò trong cột `roles.idle_timeout_minutes`
+(mặc định: sinh viên 5 phút, giảng viên 10 phút; vai trò khác `NULL` = `app.session.idle-timeout`), admin chỉnh ở
+trang Cài đặt qua `/admin/settings/idle-timeout`. Đổi xong áp dụng ngay cho các phiên đang mở; phiên quá thời gian
+chờ mới bị đóng trong vòng 30 giây với lý do `idle`.
+Người **đang thi** (ghi danh khóa có bài kiểm tra đang mở, chưa bấm nộp) và còn mở trang thì không bị tự đăng xuất:
+`RealtimeSweeper` gia hạn phiên của họ mỗi 30 giây. Nộp bài hoặc hết giờ thì thời gian chờ bình thường tính lại.
 
 ## 6. Triển khai sau reverse proxy
 
