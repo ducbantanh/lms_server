@@ -22,6 +22,20 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
 
     Optional<Submission> findByAssessmentIdAndUserId(long assessmentId, long userId);
 
+    /**
+     * Trong danh sách, những người đang thi: ghi danh khóa học có bài loại `type` đang mở và chưa bấm nộp.
+     * RealtimeSweeper giữ phiên của họ để không bị tự đăng xuất khi không hoạt động.
+     */
+    @Query("""
+            select distinct e.userId from Enrollment e, Assessment a
+            where e.userId in :userIds and a.courseId = e.courseId
+              and a.type = :type and a.opensAt <= :now and a.closesAt > :now
+              and not exists (select s.id from Submission s
+                              where s.assessmentId = a.id and s.userId = e.userId and s.submittedAt is not null)
+            """)
+    List<Long> findTakingAssessment(@Param("userIds") Collection<Long> userIds, @Param("type") int type,
+            @Param("now") Instant now);
+
     List<Submission> findByAssessmentId(long assessmentId);
 
     /** Bài nộp của mọi bài trong danh sách (bảng điểm cả khóa học). */
