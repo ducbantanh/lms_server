@@ -44,6 +44,8 @@ public enum ErrorCode {
     ATTENDANCE_CLOSED(HttpStatus.CONFLICT, "QR check-in is closed for this session"),
     /** Quét mã điểm danh của khóa học mình không có tên trong danh sách. */
     NOT_ENROLLED(HttpStatus.FORBIDDEN, "You are not enrolled in this course"),
+    /** Nhập quá số câu cho phép một lần, hoặc ngân hàng câu hỏi đã đầy. */
+    QUESTION_LIMIT(HttpStatus.CONFLICT, "Too many questions"),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
 
     private final HttpStatus status;

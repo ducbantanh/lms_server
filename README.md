@@ -58,9 +58,10 @@ src/main/java/lms/
 ├── student/           P6  API sinh viên: dashboard, nội dung khóa học, tham gia bằng mã
 ├── submission/            Sinh viên làm bài (xem đề, nộp file) và giảng viên chấm điểm; /student/assessments/**, /teacher/.../submissions/**, /submission-files/**
 ├── attendance/            Điểm danh theo buổi: mã QR đổi mỗi 10 giây (AttendanceQr), điểm danh thủ công; /teacher/.../attendance/**, /student/attendance/**
+├── question/              Ngân hàng câu hỏi trắc nghiệm của giảng viên, nhập câu hỏi từ văn bản (QuestionImportParser); /teacher/question-banks/**
 └── notification/          Thông báo: tự động khi tạo bài, tùy chọn khi thêm nội dung, giảng viên soạn; /notifications/**, /teacher/.../notifications
 src/main/resources/
-├── db/migration/      P1  V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học, V5 bài học, V6 đề riêng của bài, V7 bài nộp, V8 chấm điểm, V9 thông báo, …, V14 điểm danh
+├── db/migration/      P1  V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học, V5 bài học, V6 đề riêng của bài, V7 bài nộp, V8 chấm điểm, V9 thông báo, …, V14 điểm danh, V15–V16 ngân hàng câu hỏi theo môn học
 └── static/            P5, P6  frontend build (AdminLTE / Next export) đặt ở đây
 ```
 
@@ -140,6 +141,13 @@ Frontend hiển thị thông báo dựa vào `error.code`. Không hiển thị `
 | GET | `/teacher/courses/{id}/attendance.csv` | `courses.manage` | Bảng điểm danh: mỗi sinh viên một dòng, mỗi buổi một cột, cuối là tổng theo trạng thái |
 | POST | `/student/attendance/check-in` | `courses.view` | `{token}` (phần `?t=` của link `/attend/?t=...` trong QR) → `{courseId, course, courseTitle, session, status, checkedAt, alreadyRecorded}`. Mã chỉ nhận trong chu kỳ 10 giây hiện tại và chu kỳ ngay trước; lỗi `ATTENDANCE_CODE_INVALID` / `ATTENDANCE_CLOSED` / `NOT_ENROLLED`. Quét lại không đổi trạng thái đã có |
 | GET | `/student/courses/{id}/attendance` | `courses.view` | `[{sessionId, title, createdAt, status, checkedAt}]`: điểm danh của mình, buổi cũ trước |
+| GET, POST | `/teacher/question-banks` | `courses.manage` | Ngân hàng câu hỏi **của mình** (sửa gần nhất trước) `[{id, name, description, subjectCode, subjectName, questionCount, createdAt, updatedAt}]` / tạo `{name, description?, subjectCode?}`. Ngân hàng gắn với môn học (mã học phần, dùng chung cho các nhóm), không gắn khóa học; `subjectCode` trống = không gắn môn, môn không có trong `/subjects` → `VALIDATION_FAILED` (`UNKNOWN_SUBJECT`). Ngân hàng của người khác (kể cả với admin) → `NOT_FOUND` |
+| GET | `/teacher/question-banks/subjects` | `courses.manage` | `[{code, name}]`: môn chọn được cho ngân hàng = học phần của các khóa mình phụ trách, theo mã; tên lấy từ khóa mới nhất. Sửa ngân hàng mà giữ nguyên môn đang gắn thì được cả khi đã thôi dạy |
+| GET, PUT, DELETE | `/teacher/question-banks/{id}` | `courses.manage` | `{bank, questions}` (câu theo thứ tự thêm vào) / sửa `{name, description?, subjectCode?}` như khi tạo / xóa cả câu hỏi bên trong |
+| POST | `/teacher/question-banks/{id}/questions` | `courses.manage` | Thêm câu `{body, multiple, difficulty, explanation?, options: [{body, correct}]}`: `difficulty` 0 dễ / 1 trung bình / 2 khó; 2–10 đáp án, ít nhất 1 đáp án đúng, câu chọn một (`multiple: false`) đúng 1 đáp án đúng (sai → `VALIDATION_FAILED`, message là lý do như `SINGLE_MANY_CORRECT`). Tối đa 2000 câu mỗi ngân hàng (`QUESTION_LIMIT`) |
+| PUT, DELETE | `/teacher/question-banks/{id}/questions/{questionId}` | `courses.manage` | Sửa (cùng body như thêm, thay toàn bộ đáp án) / xóa một câu |
+| POST | `/teacher/question-banks/{id}/questions/delete` | `courses.manage` | `{ids}`: xóa nhiều câu; có id không thuộc ngân hàng → `NOT_FOUND`, không xóa câu nào |
+| POST | `/teacher/question-banks/{id}/import` | `courses.manage` | `{content}`: văn bản dán từ Word (định dạng Aiken mở rộng, xem `QuestionImportParser`) → `{added, errors: [{line, reason}]}`. Có câu lỗi thì không thêm câu nào; tối đa 500 câu mỗi lần (`QUESTION_LIMIT`) |
 | GET | `/submission-files/{id}` | `courses.view` | Tải file bài làm (luôn tải về); chỉ chủ bài nộp hoặc người quản lý khóa học |
 | GET | `/files/{id}` | `courses.view` | Tải tài liệu; PDF trả inline, DOCX/PPTX tải về; kiểm tra quyền mỗi lần tải |
 | GET, POST | `/teacher/courses` | `courses.manage` | Danh sách khóa học mình phụ trách (admin: tất cả); tạo `{code, group?, title, description, format, teacherId}` (chỉ admin). `group`: nhóm của học phần (≤ 16 ký tự, bỏ trống = không chia nhóm); trùng mã + nhóm → `COURSE_GROUP_TAKEN`. Sửa bằng `PUT /teacher/courses/{id}` cùng các trường (trừ `teacherId`). Nơi chỉ có một chuỗi mã (thông báo, bài nộp, nhật ký, tên file) hiện dạng `INT1340 · Nhóm 01` |

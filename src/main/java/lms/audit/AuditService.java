@@ -71,6 +71,13 @@ public class AuditService {
     public static final String ATTENDANCE_CHECKED_IN = "attendance.checked_in";
     public static final String ATTENDANCE_MARKED = "attendance.marked";
     public static final String ATTENDANCE_EXPORTED = "attendance.exported";
+    public static final String QUESTION_BANK_CREATED = "question_bank.created";
+    public static final String QUESTION_BANK_UPDATED = "question_bank.updated";
+    public static final String QUESTION_BANK_DELETED = "question_bank.deleted";
+    public static final String QUESTION_CREATED = "question.created";
+    public static final String QUESTION_UPDATED = "question.updated";
+    public static final String QUESTIONS_DELETED = "question.deleted";
+    public static final String QUESTIONS_IMPORTED = "question.imported";
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 
