@@ -44,9 +44,22 @@ public final class CourseViews {
             boolean hidden, Instant createdAt, Instant updatedAt) {
     }
 
-    /** paperFileId/paperFileName null khi không có đề hoặc sinh viên chưa đến giờ mở. */
+    /**
+     * paperFileId/paperFileName null khi không có đề hoặc sinh viên chưa đến giờ mở.
+     * answerMode: Assessment.MODE_*; bài trắc nghiệm có questionCount câu, timeLimitMinutes null = làm tới giờ đóng.
+     * scoreRelease: Assessment.SCORE_* (khi nào sinh viên thấy điểm).
+     */
     public record AssessmentView(String id, int type, String title, String description, String paperFileId,
-            String paperFileName, Instant opensAt, Instant closesAt, String status) {
+            String paperFileName, Instant opensAt, Instant closesAt, String status, int answerMode,
+            Integer timeLimitMinutes, long questionCount, int scoreRelease) {
+    }
+
+    /** paper null = không hiện đề (không có đề, hoặc sinh viên chưa đến giờ mở). */
+    public static AssessmentView assessmentView(Assessment a, CourseFile paper, long questionCount, Instant now) {
+        return new AssessmentView(a.getPublicId(), a.getType(), a.getTitle(), a.getDescription(),
+                paper == null ? null : paper.getPublicId(), paper == null ? null : paper.getName(),
+                a.getOpensAt(), a.getClosesAt(), a.statusAt(now), a.getAnswerMode(), a.getTimeLimitMinutes(),
+                questionCount, a.getScoreRelease());
     }
 
     public record CourseDetail(CourseView course, List<SectionView> sections, List<LessonView> lessons,
@@ -129,7 +142,9 @@ public final class CourseViews {
             String paperFileId,
             Instant opensAt,
             Instant closesAt,
-            boolean notifyStudents) {
+            boolean notifyStudents,
+            /** Assessment.SCORE_*; không gửi = công bố ngay. Sau giờ đóng thì cần closesAt. */
+            @Min(0) @Max(2) int scoreRelease) {
     }
 
     /** Sửa bài: tiêu đề, mô tả, giờ mở/đóng; loại bài và đề giữ nguyên. */

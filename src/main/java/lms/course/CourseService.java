@@ -36,6 +36,7 @@ import lms.course.CourseViews.SectionView;
 import lms.course.CourseViews.StudentRow;
 import lms.course.CourseViews.UpdateCourseRequest;
 import lms.course.CourseViews.UserPick;
+import lms.quiz.QuizQuestionRepository;
 import lms.submission.SubmissionFileRepository;
 import lms.user.User;
 import lms.user.UserRepository;
@@ -62,14 +63,16 @@ public class CourseService {
     private final AssessmentRepository assessments;
     private final UserRepository users;
     private final SubmissionFileRepository submissionFiles;
+    private final QuizQuestionRepository quizQuestions;
     private final FileStorage storage;
     private final AuditService audit;
 
     public CourseService(CourseRepository courses, EnrollmentRepository enrollments,
             CourseSectionRepository sections, LessonRepository lessons, CourseFileRepository files,
             AssessmentRepository assessments, UserRepository users, SubmissionFileRepository submissionFiles,
-            FileStorage storage, AuditService audit) {
+            FileStorage storage, AuditService audit, QuizQuestionRepository quizQuestions) {
         this.submissionFiles = submissionFiles;
+        this.quizQuestions = quizQuestions;
         this.courses = courses;
         this.enrollments = enrollments;
         this.sections = sections;
@@ -343,14 +346,17 @@ public class CourseService {
                         Optional.ofNullable(f.getLessonId()).map(lessonById::get).map(Lesson::getPublicId)
                                 .orElse(null)))
                 .toList();
-        List<AssessmentView> assessmentViews = assessments.findByCourseIdOrderByCreatedAt(c.getId()).stream()
+        List<Assessment> assessmentList = assessments.findByCourseIdOrderByCreatedAt(c.getId());
+        Map<Long, Long> questionCounts = assessmentList.stream().noneMatch(Assessment::isQuiz) ? Map.of()
+                : quizQuestions.countByAssessmentIds(assessmentList.stream().map(Assessment::getId).toList())
+                        .stream().collect(Collectors.toMap(r -> (Long) r[0], r -> (Long) r[1]));
+        List<AssessmentView> assessmentViews = assessmentList.stream()
                 .map(a -> {
                     CourseFile paper = Optional.ofNullable(a.getPaperFileId()).map(fileById::get).orElse(null);
                     // Sinh viên chỉ thấy đề khi bài đã mở
                     boolean show = paper != null && (!studentView || a.isOpened(now));
-                    return new AssessmentView(a.getPublicId(), a.getType(), a.getTitle(), a.getDescription(),
-                            show ? paper.getPublicId() : null, show ? paper.getName() : null,
-                            a.getOpensAt(), a.getClosesAt(), a.statusAt(now));
+                    return CourseViews.assessmentView(a, show ? paper : null,
+                            questionCounts.getOrDefault(a.getId(), 0L), now);
                 }).toList();
         return new CourseDetail(view(c, studentView, enrollments.countByCourseId(c.getId())),
                 secs.stream().map(s -> new SectionView(s.getPublicId(), s.getPosition(), s.getTitle())).toList(),
