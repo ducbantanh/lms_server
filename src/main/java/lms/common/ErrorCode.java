@@ -26,6 +26,8 @@ public enum ErrorCode {
     TEACHER_ONLY(HttpStatus.FORBIDDEN, "Only the course teacher can do this"),
     /** Giảng viên được chọn không tồn tại, không phải giảng viên hoặc đã bị khóa. */
     INVALID_TEACHER(HttpStatus.BAD_REQUEST, "Teacher not found or inactive"),
+    /** Tạo/sửa khóa học trùng mã học phần + nhóm của khóa học khác. */
+    COURSE_GROUP_TAKEN(HttpStatus.CONFLICT, "A course with this code and group already exists"),
     /** Đổi mã đăng nhập sang mã đã có người dùng (không phân biệt hoa thường). */
     USERNAME_TAKEN(HttpStatus.CONFLICT, "Username already exists"),
     /** Đặt lại mật khẩu về ngày sinh nhưng tài khoản chưa có ngày sinh. */

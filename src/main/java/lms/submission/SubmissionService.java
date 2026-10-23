@@ -88,7 +88,7 @@ public class SubmissionService {
         Instant now = Instant.now();
         Submission s = submissions.findByAssessmentIdAndUserId(t.assessment().getId(), me.userId()).orElse(null);
         Course c = t.course();
-        return new StudentAssessment(new CourseRef(c.getPublicId(), c.getCode(), c.getTitle()),
+        return new StudentAssessment(new CourseRef(c.getPublicId(), c.displayCode(), c.getTitle()),
                 assessmentView(t.assessment(), now), submissionView(t.assessment(), s, now), now);
     }
 
@@ -139,7 +139,7 @@ public class SubmissionService {
             throw e;
         }
         // Bằng chứng khi có tranh chấp "em đã tải bài lên rồi"
-        audit.record(me.userId(), AuditService.SUBMISSION_FILE_ADDED, t.course().getCode(),
+        audit.record(me.userId(), AuditService.SUBMISSION_FILE_ADDED, t.course().displayCode(),
                 a.getTitle() + " · " + file.name() + " (" + file.data().length + " B)");
         return submissionView(a, s, now);
     }
@@ -157,7 +157,7 @@ public class SubmissionService {
         files.delete(f);
         s.touch();
         CourseService.afterCommit(() -> storage.deleteQuietly(f.getStorageKey()));
-        audit.record(me.userId(), AuditService.SUBMISSION_FILE_REMOVED, t.course().getCode(),
+        audit.record(me.userId(), AuditService.SUBMISSION_FILE_REMOVED, t.course().displayCode(),
                 a.getTitle() + " · " + f.getName());
         return submissionView(a, s, now);
     }
@@ -175,7 +175,7 @@ public class SubmissionService {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "Nothing to submit");
         }
         s.submit(now);
-        audit.record(me.userId(), AuditService.SUBMISSION_SUBMITTED, t.course().getCode(),
+        audit.record(me.userId(), AuditService.SUBMISSION_SUBMITTED, t.course().displayCode(),
                 a.getTitle() + " (" + count + " file)", ip);
         return submissionView(a, s, now);
     }

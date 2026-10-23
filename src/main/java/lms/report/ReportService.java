@@ -111,9 +111,9 @@ public class ReportService {
             out.append(csvLine(cells));
             rows++;
         }
-        audit.record(me.userId(), AuditService.GRADES_EXPORTED, c.getCode(),
+        audit.record(me.userId(), AuditService.GRADES_EXPORTED, c.displayCode(),
                 rows + " sinh viên, " + list.size() + " bài");
-        return new Csv("bang-diem-" + fileSafe(c.getCode()) + ".csv", out.toString().getBytes(StandardCharsets.UTF_8));
+        return new Csv("bang-diem-" + fileSafe(c.displayCode()) + ".csv", out.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -150,9 +150,9 @@ public class ReportService {
             }
             students++;
         }
-        audit.record(me.userId(), AuditService.SUBMISSIONS_DOWNLOADED, c.getCode(),
+        audit.record(me.userId(), AuditService.SUBMISSIONS_DOWNLOADED, c.displayCode(),
                 a.getTitle() + " · " + students + " sinh viên, " + items.size() + " file");
-        return new Archive(fileSafe(c.getCode() + " - " + a.getTitle()) + ".zip", items);
+        return new Archive(fileSafe(c.displayCode() + " - " + a.getTitle()) + ".zip", items);
     }
 
     // ---------------------------------------------------------------- tiện ích (package-private để test)

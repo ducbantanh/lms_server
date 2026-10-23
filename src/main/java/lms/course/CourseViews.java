@@ -21,13 +21,13 @@ public final class CourseViews {
 
     // ---------------------------------------------------------------- response
 
-    public record CourseSummary(String id, String code, String title, int format, long studentCount,
+    /** group: nhóm của học phần, null = không chia nhóm. */
+    public record CourseSummary(String id, String code, String group, String title, int format, long studentCount,
             String teacherName, Instant createdAt) {
     }
 
-    /** enrollKey luôn null ở góc nhìn sinh viên. */
     /** enrollKey, teacherId luôn null ở góc nhìn sinh viên; teacherId null = chưa phân công. */
-    public record CourseView(String id, String code, String title, String description, int format,
+    public record CourseView(String id, String code, String group, String title, String description, int format,
             String enrollKey, long studentCount, String teacherId, String teacherName, Instant createdAt) {
     }
 
@@ -71,6 +71,8 @@ public final class CourseViews {
     /** Admin tạo khóa học và phân công luôn giảng viên phụ trách (public id, phải là giảng viên đang hoạt động). */
     public record CreateCourseRequest(
             @NotBlank @Size(max = 32) String code,
+            /** Nhóm của học phần, không bắt buộc (bỏ trống = không chia nhóm). */
+            @Size(max = 16) String group,
             @NotBlank @Size(max = 200) String title,
             @Size(max = 2000) String description,
             @Min(0) @Max(2) int format,
@@ -84,6 +86,7 @@ public final class CourseViews {
     /** Sửa thông tin khóa học; format chỉ đổi được giữa 0 và 1. */
     public record UpdateCourseRequest(
             @NotBlank @Size(max = 32) String code,
+            @Size(max = 16) String group,
             @NotBlank @Size(max = 200) String title,
             @Size(max = 2000) String description,
             @Min(0) @Max(2) int format) {

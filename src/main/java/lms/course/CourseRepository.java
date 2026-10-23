@@ -25,6 +25,11 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
 
     boolean existsByEnrollKey(String enrollKey);
 
+    /** Đã có khóa học cùng mã + nhóm (so sánh không phân biệt hoa thường theo collation của bảng). */
+    boolean existsByCodeAndGroupName(String code, String groupName);
+
+    boolean existsByCodeAndGroupNameAndIdNot(String code, String groupName, Long id);
+
     /** Admin: mọi khóa học, mới nhất trước. */
     @Query("select c from Course c left join fetch c.teacher order by c.createdAt desc")
     List<Course> findAllNewestFirst();

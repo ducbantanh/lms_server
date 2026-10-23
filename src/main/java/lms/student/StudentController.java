@@ -40,8 +40,8 @@ public class StudentController {
      * Khớp model client (lms_client/lib/use-courses.ts). progress là phần trăm (null khi chưa có gì để tính),
      * nextLesson là bài học đầu tiên chưa học.
      */
-    public record CourseSummary(String id, String code, String title, String teacherName, Integer progress,
-            NextLesson nextLesson) {
+    public record CourseSummary(String id, String code, String group, String title, String teacherName,
+            Integer progress, NextLesson nextLesson) {
     }
 
     public record Dashboard(Profile profile, List<CourseSummary> courses) {
@@ -81,6 +81,7 @@ public class StudentController {
 
     private static CourseSummary summary(Course c, CourseProgress p) {
         String teacher = c.getTeacher() == null ? null : c.getTeacher().getFullName();
-        return new CourseSummary(c.getPublicId(), c.getCode(), c.getTitle(), teacher, p.percent(), p.nextLesson());
+        return new CourseSummary(c.getPublicId(), c.getCode(), c.getGroupName(), c.getTitle(), teacher, p.percent(),
+                p.nextLesson());
     }
 }

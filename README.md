@@ -133,7 +133,7 @@ Frontend hiển thị thông báo dựa vào `error.code`. Không hiển thị `
 | GET, POST | `/teacher/courses/{id}/notifications` | `courses.manage` | Lịch sử thông báo của khóa học kèm số đã đọc / gửi `{title, body, studentIds?}` (bỏ trống `studentIds` = cả lớp) |
 | GET | `/submission-files/{id}` | `courses.view` | Tải file bài làm (luôn tải về); chỉ chủ bài nộp hoặc người quản lý khóa học |
 | GET | `/files/{id}` | `courses.view` | Tải tài liệu; PDF trả inline, DOCX/PPTX tải về; kiểm tra quyền mỗi lần tải |
-| GET, POST | `/teacher/courses` | `courses.manage` | Danh sách khóa học mình phụ trách (admin: tất cả); tạo `{code, title, description, format}` |
+| GET, POST | `/teacher/courses` | `courses.manage` | Danh sách khóa học mình phụ trách (admin: tất cả); tạo `{code, group?, title, description, format, teacherId}` (chỉ admin). `group`: nhóm của học phần (≤ 16 ký tự, bỏ trống = không chia nhóm); trùng mã + nhóm → `COURSE_GROUP_TAKEN`. Sửa bằng `PUT /teacher/courses/{id}` cùng các trường (trừ `teacherId`). Nơi chỉ có một chuỗi mã (thông báo, bài nộp, nhật ký, tên file) hiện dạng `INT1340 · Nhóm 01` |
 | GET, DELETE | `/teacher/courses/{id}` | `courses.manage` | Chi tiết `{course, sections, lessons, files, assessments}`; xóa cả file trên đĩa |
 | POST, DELETE | `/teacher/courses/{id}/sections[/{sectionId}]` | `courses.manage` | Thêm `{title}` / xóa mục (bài học và file trong mục chuyển về "chưa phân mục") |
 | POST | `/teacher/courses/{id}/lessons` | `courses.manage` | Tạo bài `{sectionId?, title, body?, hidden, notifyStudents}`; bài mới xếp cuối mục; khóa học "chỉ danh sách file" không có bài |
