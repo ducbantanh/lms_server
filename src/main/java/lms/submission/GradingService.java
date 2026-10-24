@@ -100,6 +100,10 @@ public class GradingService {
             AuthPrincipal me, String ip) {
         Course c = courses.requireTeaching(courseId, me);
         Assessment a = requireAssessment(c, assessmentId);
+        if (a.isCode()) {
+            // Bài lập trình không chấm điểm: kết quả là số test đúng của từng câu (lms.code)
+            throw new AppException(ErrorCode.BAD_REQUEST, "Code assessment has no score");
+        }
         User student = users.findByPublicId(studentId)
                 .filter(u -> enrollments.existsByCourseIdAndUserId(c.getId(), u.getId()))
                 .orElseThrow(() -> AppException.notFound("Student"));
@@ -168,7 +172,8 @@ public class GradingService {
     /** Giảng viên luôn thấy đề, kể cả trước giờ mở. */
     private AssessmentView teacherView(Assessment a, Instant now) {
         CourseFile paper = a.getPaperFileId() == null ? null : courseFiles.findById(a.getPaperFileId()).orElse(null);
-        return CourseViews.assessmentView(a, paper, a.isQuiz() ? quizQuestions.countByAssessmentId(a.getId()) : 0,
+        return CourseViews.assessmentView(a, paper, a.isQuiz() ? quizQuestions.countByAssessmentId(a.getId())
+                : a.isCode() ? assessments.countCodeProblems(a.getId()) : 0,
                 now);
     }
 }

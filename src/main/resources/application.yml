@@ -31,9 +31,10 @@ spring:
 
   servlet:
     multipart:
-      # Tài liệu khóa học tối đa 20 MB (app.storage.max-file-bytes); import sinh viên tự giới hạn 256 KB
+      # Tài liệu khóa học tối đa 20 MB (app.storage.max-file-bytes); import sinh viên tự giới hạn 256 KB.
+      # Cả request lớn hơn: bài lập trình nhiều câu gửi mỗi câu một file ZIP bộ test (≤ 20 MB) trong một request
       max-file-size: 20MB
-      max-request-size: 21MB
+      max-request-size: 101MB
 
   web:
     resources:
@@ -51,7 +52,7 @@ server:
     whitelabel:
       enabled: false
   tomcat:
-    max-swallow-size: 21MB
+    max-swallow-size: 101MB
 
 app:
   session:
@@ -78,6 +79,14 @@ app:
     # Thư mục lưu tài liệu khóa học (tương đối với thư mục chạy server)
     dir: ${APP_STORAGE_DIR:data/files}
     max-file-bytes: 20971520
+  judge:
+    # docker: mỗi lần chấm một container cô lập (dựng image: docker build -t lms-judge:1 judge).
+    # local: chạy thẳng trên máy server, KHÔNG cô lập — chỉ dùng khi phát triển (xem AppProperties.Judge)
+    sandbox: ${APP_JUDGE_SANDBOX:local}
+    # Số bài chấm song song
+    workers: ${APP_JUDGE_WORKERS:2}
+    work-dir: ${APP_JUDGE_WORK_DIR:data/judge}
+    docker-image: ${APP_JUDGE_IMAGE:lms-judge:1}
   bootstrap:
     admin-username: ${APP_ADMIN_USERNAME:admin}
     # Để trống -> server sinh mật khẩu ngẫu nhiên và in ra log MỘT lần khi tạo admin

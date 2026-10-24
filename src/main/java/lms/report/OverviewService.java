@@ -104,7 +104,8 @@ public class OverviewService {
                 String status = SubmissionService.statusOf(a, s, count, now);
                 if (SubmissionViews.SUBMITTED.equals(status) || SubmissionViews.AUTO_SUBMITTED.equals(status)) {
                     submitted++;
-                    if (!s.isGraded()) {
+                    // Bài lập trình không chấm điểm: không có việc cần chấm
+                    if (!a.isCode() && !s.isGraded()) {
                         pending++;
                     }
                 }

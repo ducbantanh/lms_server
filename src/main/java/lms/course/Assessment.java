@@ -23,6 +23,8 @@ public class Assessment {
 
     public static final int MODE_FILE = 0;
     public static final int MODE_QUIZ = 1;
+    /** Bài lập trình: sinh viên nộp mã nguồn, máy chấm chạy bộ test (lms.code). */
+    public static final int MODE_CODE = 2;
 
     /** Bài trắc nghiệm: khi nào sinh viên được xem đáp án đúng và giải thích. */
     public static final int REVEAL_NEVER = 0;
@@ -48,7 +50,7 @@ public class Assessment {
     @Column(nullable = false)
     private int type;
 
-    /** MODE_FILE: nộp file; MODE_QUIZ: trắc nghiệm, câu hỏi ở lms.quiz.QuizQuestion. */
+    /** MODE_FILE: nộp file; MODE_QUIZ: trắc nghiệm, câu hỏi ở lms.quiz.QuizQuestion; MODE_CODE: lms.code.CodeProblem. */
     @Column(name = "answer_mode", nullable = false)
     private int answerMode;
 
@@ -109,6 +111,15 @@ public class Assessment {
         a.timeLimitMinutes = timeLimitMinutes;
         a.shuffle = shuffle;
         a.revealMode = revealMode;
+        a.scoreRelease = scoreRelease;
+        return a;
+    }
+
+    /** Bài lập trình: đề và bộ test ở lms.code (CodeProblem, CodeTest), lưu sau khi lưu bài. */
+    public static Assessment code(long courseId, int type, String title, String description, Instant opensAt,
+            Instant closesAt, int scoreRelease) {
+        Assessment a = new Assessment(courseId, type, title, description, null, opensAt, closesAt);
+        a.answerMode = MODE_CODE;
         a.scoreRelease = scoreRelease;
         return a;
     }
@@ -196,6 +207,10 @@ public class Assessment {
 
     public boolean isQuiz() {
         return answerMode == MODE_QUIZ;
+    }
+
+    public boolean isCode() {
+        return answerMode == MODE_CODE;
     }
 
     public Integer getTimeLimitMinutes() {

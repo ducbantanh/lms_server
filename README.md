@@ -58,11 +58,12 @@ src/main/java/lms/
 ├── student/           P6  API sinh viên: dashboard, nội dung khóa học, tham gia bằng mã
 ├── submission/            Sinh viên làm bài (xem đề, nộp file) và giảng viên chấm điểm; /student/assessments/**, /teacher/.../submissions/**, /submission-files/**
 ├── attendance/            Điểm danh theo buổi: mã QR đổi mỗi 10 giây (AttendanceQr), điểm danh thủ công; /teacher/.../attendance/**, /student/attendance/**
+├── code/                  Bài lập trình nhiều câu, không điểm (kết quả = số test đúng): mỗi câu đề + bộ test (test mẫu / ẩn, soạn tay hoặc ZIP), sinh viên chạy thử / nộp nhiều lần, hàng đợi trong DB, CodeJudgeWorker chấm nền trong sandbox (LocalSandbox / DockerSandbox); /teacher/.../code-assessments, /student/assessments/{id}/code/**
 ├── quiz/                  Bài trắc nghiệm tạo từ ngân hàng (chép câu hỏi sang bài), sinh viên làm và server chấm (QuizGrader), QuizSweeper chốt bài hết giờ; /teacher/.../quizzes, /student/assessments/{id}/quiz/**
 ├── question/              Ngân hàng câu hỏi trắc nghiệm của giảng viên, nhập câu hỏi từ văn bản (QuestionImportParser); /teacher/question-banks/**
 └── notification/          Thông báo: tự động khi tạo bài, tùy chọn khi thêm nội dung, giảng viên soạn; /notifications/**, /teacher/.../notifications
 src/main/resources/
-├── db/migration/      P1  V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học, V5 bài học, V6 đề riêng của bài, V7 bài nộp, V8 chấm điểm, V9 thông báo, …, V14 điểm danh, V15–V16 ngân hàng câu hỏi theo môn học, V17 bài trắc nghiệm, V18 công bố điểm sau giờ đóng
+├── db/migration/      P1  V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học, V5 bài học, V6 đề riêng của bài, V7 bài nộp, V8 chấm điểm, V9 thông báo, …, V14 điểm danh, V15–V16 ngân hàng câu hỏi theo môn học, V17 bài trắc nghiệm, V18 công bố điểm sau giờ đóng, V19–V21 bài lập trình (bộ test ZIP, nhiều câu)
 └── static/            P5, P6  frontend build (AdminLTE / Next export) đặt ở đây
 ```
 
@@ -129,7 +130,7 @@ Frontend hiển thị thông báo dựa vào `error.code`. Không hiển thị `
 | DELETE | `/student/assessments/{id}/files/{fileId}` | `submissions.create` | Xóa file bài làm (cùng điều kiện như trên) |
 | POST | `/student/assessments/{id}/submit` | `submissions.create` | Nộp bài (cần ≥ 1 file), sau đó khóa bài làm; ghi audit `submission.submitted` |
 | GET | `/teacher/courses/{id}/assessments/{assessmentId}/submissions` | `courses.manage` + `submissions.manage` | `{course, assessment, summary, rows}`: mọi sinh viên đã ghi danh kèm trạng thái, file, điểm; `summary` = số sinh viên / đã nộp / đã chấm / điểm trung bình |
-| PUT | `/teacher/courses/{id}/assessments/{assessmentId}/submissions/{studentId}/grade` | `courses.manage` + `submissions.manage` | `{score, feedback}`: thang 0–10, tối đa 2 chữ số thập phân; `score: null` xóa điểm. Chỉ chấm bài đã chốt (đã nộp, hết giờ, không nộp), còn lại `SUBMISSION_NOT_FINAL`; ghi audit `submission.graded` |
+| PUT | `/teacher/courses/{id}/assessments/{assessmentId}/submissions/{studentId}/grade` | `courses.manage` + `submissions.manage` | `{score, feedback}` (bài lập trình không chấm điểm → `BAD_REQUEST`): thang 0–10, tối đa 2 chữ số thập phân; `score: null` xóa điểm. Chỉ chấm bài đã chốt (đã nộp, hết giờ, không nộp), còn lại `SUBMISSION_NOT_FINAL`; ghi audit `submission.graded` |
 | GET | `/notifications?category=&unread=&page=&size=` | `courses.view` | Thông báo của mình, mới nhất trước; `category`: `exam` / `lab` / `practice` / `content` / `announcement` |
 | GET | `/notifications/summary` | `courses.view` | `{unread, byCategory}`: số chưa đọc tổng và theo loại |
 | POST | `/notifications/{id}/read`, `/notifications/read-all` | `courses.view` | Đánh dấu đã đọc một / tất cả |
@@ -156,6 +157,18 @@ Frontend hiển thị thông báo dựa vào `error.code`. Không hiển thị `
 | POST | `/student/assessments/{id}/quiz/start` | `submissions.create` | Bắt đầu làm (một lần; gọi lại thì trả trạng thái hiện tại). Hạn = giờ đóng, hoặc giờ bắt đầu + `timeLimitMinutes` nếu sớm hơn. Chưa mở → `ASSESSMENT_NOT_OPEN`; đã đóng/đã nộp → `SUBMISSION_LOCKED` |
 | PUT | `/student/assessments/{id}/quiz/answers/{questionId}` | `submissions.create` | `{chosen: [vị trí]}` thay câu trả lời một câu (rỗng = bỏ chọn); câu chọn một chỉ 1 đáp án. Quá hạn thì server chốt bài, trả `SUBMISSION_LOCKED` |
 | POST | `/student/assessments/{id}/quiz/submit` | `submissions.create` | Nộp và chấm ngay: một câu đúng khi chọn đúng khít các đáp án đúng; điểm = số câu đúng / tổng số câu × 10 (lưu vào `score` và `auto_score`; giảng viên sửa `score` bằng API chấm điểm như bài nộp file). Hết hạn mà chưa nộp thì `QuizSweeper` (30 giây/lần) chốt với giờ nộp = hạn. Bài trắc nghiệm không nhận `/files` (`BAD_REQUEST`) |
+| POST | `/teacher/courses/{id}/code-assessments` | `courses.manage` | Tạo bài lập trình **nhiều câu, không có điểm** `{type (0 bài tập / 1 thực hành / 2 kiểm tra), title, description?, opensAt?, closesAt?, scoreRelease (lúc sinh viên xem được kết quả nộp bài: 0 ngay / 1 sau giờ đóng / 2 không), notifyStudents, code: {languages ⊂ [c, cpp, java, python], problems}}`; mỗi câu `{title, statement (≤ 20000 ký tự), timeLimitMs (100–10000, mỗi test; Java ×2, Python ×3), memoryLimitMb (16–1024), maxAttempts? (1–100), tests: [{input, expected, sample}], archive? (tên part chứa ZIP bộ test của câu)}`. Tối đa 20 câu, mỗi câu 200 test / 64 MB; test mẫu tối đa 8 KB mỗi ô. Multipart: part `data` (JSON như trên) + mỗi file ZIP một part (test trong ZIP thêm sau `tests`, là test ẩn). Chỉ giảng viên phụ trách |
+| POST | `/teacher/courses/{id}/code-test-archive` | `courses.manage` | Multipart part `tests`: đọc thử ZIP bộ test, không lưu gì → `{tests: [{name, inputSize, expectedSize}], problems: [{name, reason}], ignored}`; `reason`: `MISSING_INPUT` / `MISSING_OUTPUT` / `DUPLICATE` / `FILE_TOO_LARGE` (file > 8 MB) / `TOO_LARGE` (> 64 MB) / `TOO_MANY` / `NOT_ZIP` / `EMPTY`. Cặp file nhận được: `1.in`+`1.out` (input .in .inp .input; output .out .ans .ok .output .sol), `input01.txt`+`output01.txt`, kiểu Themis `Test01/BAI.INP`+`Test01/BAI.OUT`; test xếp theo tên kiểu tự nhiên, file khác bị bỏ qua (`TestArchive`) |
+| GET, PUT | `/teacher/courses/{id}/assessments/{aid}/code` | `courses.manage` | `{languages, problems: [{id, title, statement, timeLimitMs, memoryLimitMb, maxAttempts, tests: [{id, name, input, expected, inputTruncated, expectedTruncated, inputSize, expectedSize, sample}]}], pending, editable}` (test > 8 KB chỉ có 300 ký tự đầu) / sửa `code` như khi tạo (JSON hoặc multipart kèm ZIP): câu có `id` được giữ, câu không có trong danh sách bị xóa cùng các lần nộp; mỗi test `{id, sample}` để giữ test đang có, hoặc có `input`/`expected` để thêm / thay nội dung. Câu có bộ test hoặc giới hạn đổi thì mọi lần nộp của câu được **chấm lại**; bài kiểm tra đã kết thúc → `ASSESSMENT_CLOSED`; ghi audit `assessment.updated` |
+| GET | `/teacher/courses/{id}/assessments/{aid}/code/results` | `courses.manage` | Bảng sinh viên × câu `{problems: [{id, title}], rows: [{studentId, username, fullName, cells: [{problemId, status, best: {verdict, passed, total}, attempts}]}]}`; `status`: `none` chưa nộp / `pending` đang chấm / `accepted` có lần nộp AC / `rejected` đã nộp, chưa AC; `best` = lần nộp AC, không thì lần đúng nhiều test nhất |
+| GET | `/teacher/courses/{id}/assessments/{aid}/code/problems/{pid}/tests.zip` | `courses.manage` | Tải bộ test một câu `01.in`/`01.out`… theo thứ tự (nạp lại được bằng ZIP) |
+| POST | `/teacher/courses/{id}/assessments/{aid}/code/rejudge` | `courses.manage` | Chấm lại mọi lần nộp (vd. sau lỗi máy chấm `SE`), kể cả bài đã kết thúc; ghi audit `submission.code_rejudged` |
+| GET | `/teacher/courses/{id}/assessments/{aid}/submissions/{studentId}/code` | `courses.manage` | `{studentId, username, fullName, attempts}`: các lần chạy/nộp ở mọi câu (có `problemId`), mới nhất trước, không kèm mã nguồn |
+| GET | `/teacher/courses/{id}/assessments/{aid}/code/attempts/{attemptId}` | `courses.manage` | Một lần chạy/nộp: `source`, `compileOutput`, `results: [{index, sample, verdict, timeMs, output, error}]` của mọi test (output chỉ giữ khi sai hoặc là test mẫu, ≤ 2000 ký tự) |
+| GET | `/student/assessments/{id}/code` | `submissions.create` | Danh sách câu `{languages: [{code, label, timeFactor}], problems: [{id, number, title, timeLimitMs, memoryLimitMb, maxAttempts, attemptsUsed, testCount, status, best}], resultsHidden, open, serverTime}`; `status` như bảng của giảng viên, thêm `submitted` (đã nộp nhưng kết quả chưa công bố: không lộ đúng/sai). Bài chưa mở → `ASSESSMENT_NOT_OPEN` |
+| GET | `/student/assessments/{id}/code/problems/{pid}` | `submissions.create` | Một câu `{problem, statement, samples: [{input, expected}], attempts, languages, resultsHidden, open, serverTime}`; `attempts[]` = `{id, problemId, kind (run / submit), language, status (queued / running / done), verdict (AC / WA / TLE / RE / OLE / CE / SE), passed, total, createdAt, judgedAt}`, kết quả chưa công bố thì `verdict`, `passed`, `total` là `null` |
+| POST | `/student/assessments/{id}/code/problems/{pid}/run`, `/submit` | `submissions.create` | `{language, source (≤ 65536 ký tự)}` → lần chạy `queued`; hỏi lại tới khi `done`. `run` chỉ chạy test mẫu (giữ 20 lần gần nhất mỗi câu). `submit` chạy mọi test, kết quả là số test đúng / tổng (**không có điểm**); lần nộp đầu tạo bài nộp `submitted`, ghi audit `submission.submitted`. Mỗi câu một lần chờ chấm mỗi lúc (`JUDGE_BUSY`); hết lượt nộp → `ATTEMPT_LIMIT`; ngoài giờ → `ASSESSMENT_NOT_OPEN` / `SUBMISSION_LOCKED`. Lỗi máy chấm (`SE`) không tính lượt |
+| GET | `/student/assessments/{id}/code/attempts/{attemptId}` | `submissions.create` | Một lần chạy/nộp của mình kèm mã nguồn. Chạy thử: kết quả từng test mẫu kèm output; nộp bài: chỉ kết quả chung (`AC 5/5`), lỗi biên dịch khi CE, **không có kết quả từng test** |
 | GET | `/submission-files/{id}` | `courses.view` | Tải file bài làm (luôn tải về); chỉ chủ bài nộp hoặc người quản lý khóa học |
 | GET | `/files/{id}` | `courses.view` | Tải tài liệu; PDF trả inline, DOCX/PPTX tải về; kiểm tra quyền mỗi lần tải |
 | GET, POST | `/teacher/courses` | `courses.manage` | Danh sách khóa học mình phụ trách (admin: tất cả); tạo `{code, group?, title, description, format, teacherId}` (chỉ admin). `group`: nhóm của học phần (≤ 16 ký tự, bỏ trống = không chia nhóm); trùng mã + nhóm → `COURSE_GROUP_TAKEN`. Sửa bằng `PUT /teacher/courses/{id}` cùng các trường (trừ `teacherId`). Nơi chỉ có một chuỗi mã (thông báo, bài nộp, nhật ký, tên file) hiện dạng `INT1340 · Nhóm 01` |
@@ -233,6 +246,18 @@ APP_FORWARD_HEADERS=native
 ```
 
 Nginx cần chuyển tiếp header `Upgrade` và `Connection` cho `/ws`, và đặt `proxy_read_timeout` lớn hơn 60s.
+
+**Máy chấm bài lập trình.** Profile prod mặc định `app.judge.sandbox=docker`: mỗi lần chấm một container
+không mạng, giới hạn RAM/CPU/số tiến trình, chạy bằng uid của chủ thư mục `data/judge`. Cần Docker trên máy
+server và dựng image một lần:
+
+```
+docker build -t lms-judge:1 judge
+```
+
+Tài khoản chạy server phải gọi được `docker`. Sandbox `local` (mặc định ở dev) chạy thẳng bằng
+gcc/g++/javac/java/python trên máy server, chỉ giới hạn thời gian và output: chương trình của sinh viên đọc/ghi
+được mọi file mà server đọc/ghi được, **không dùng khi triển khai thật**.
 
 ## 7. Backup & restore
 

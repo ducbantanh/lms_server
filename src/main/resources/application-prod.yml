@@ -6,6 +6,9 @@ server:
 app:
   session:
     secure-cookie: ${APP_SECURE_COOKIE:true}
+  judge:
+    # Triển khai thật: chạy bài sinh viên trong container (cần Docker và image judge/Dockerfile)
+    sandbox: ${APP_JUDGE_SANDBOX:docker}
   bootstrap:
     create-demo-student: false
 

@@ -409,7 +409,8 @@ public class CourseContentService {
 
     /** Góc nhìn giảng viên: luôn thấy đề. */
     private AssessmentView teacherView(Assessment a, CourseFile paper) {
-        return CourseViews.assessmentView(a, paper, a.isQuiz() ? quizQuestions.countByAssessmentId(a.getId()) : 0,
+        return CourseViews.assessmentView(a, paper, a.isQuiz() ? quizQuestions.countByAssessmentId(a.getId())
+                : a.isCode() ? assessments.countCodeProblems(a.getId()) : 0,
                 Instant.now());
     }
 

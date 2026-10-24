@@ -214,9 +214,9 @@ public class SubmissionService {
     }
 
     private static void requireEditable(Assessment a, Submission s, Instant now) {
-        if (a.isQuiz()) {
-            // Bài trắc nghiệm làm qua /student/assessments/{id}/quiz/**, không nộp file
-            throw new AppException(ErrorCode.BAD_REQUEST, "Quiz assessment");
+        if (a.isQuiz() || a.isCode()) {
+            // Bài trắc nghiệm / lập trình làm qua /student/assessments/{id}/quiz/**, /code/**, không nộp file
+            throw new AppException(ErrorCode.BAD_REQUEST, a.isQuiz() ? "Quiz assessment" : "Code assessment");
         }
         if (!a.isOpened(now)) {
             throw new AppException(ErrorCode.ASSESSMENT_NOT_OPEN);
@@ -230,7 +230,8 @@ public class SubmissionService {
     AssessmentView assessmentView(Assessment a, Instant now) {
         CourseFile paper = a.getPaperFileId() == null || !a.isOpened(now) ? null
                 : courseFiles.findById(a.getPaperFileId()).orElse(null);
-        return CourseViews.assessmentView(a, paper, a.isQuiz() ? quizQuestions.countByAssessmentId(a.getId()) : 0,
+        return CourseViews.assessmentView(a, paper, a.isQuiz() ? quizQuestions.countByAssessmentId(a.getId())
+                : a.isCode() ? assessments.countCodeProblems(a.getId()) : 0,
                 now);
     }
 
