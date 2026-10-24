@@ -32,11 +32,14 @@ public class Submission {
     @Column(name = "user_id", nullable = false, updatable = false)
     private Long userId;
 
-    /** Bài trắc nghiệm: lúc bấm "Bắt đầu"; NULL với bài nộp file. */
+    /** Bài trắc nghiệm: lúc bấm "Bắt đầu"; NULL với bài nộp file và bài lập trình. */
     @Column(name = "started_at")
     private Instant startedAt;
 
-    /** NULL = đang làm; khác NULL = đã bấm nộp, không sửa được nữa. */
+    /**
+     * NULL = đang làm; khác NULL = đã bấm nộp, không sửa được nữa (bài lập trình: lần nộp gần nhất, còn nộp lại
+     * được; không có điểm).
+     */
     @Column(name = "submitted_at")
     private Instant submittedAt;
 

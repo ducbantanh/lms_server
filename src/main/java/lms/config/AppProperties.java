@@ -16,7 +16,8 @@ public record AppProperties(
         @DefaultValue StudentImport studentImport,
         @DefaultValue Ws ws,
         @DefaultValue Bootstrap bootstrap,
-        @DefaultValue Storage storage) {
+        @DefaultValue Storage storage,
+        @DefaultValue Judge judge) {
 
     public record Session(
             @DefaultValue("SID") String cookieName,
@@ -47,6 +48,26 @@ public record AppProperties(
     public record Storage(
             @DefaultValue("data/files") String dir,
             @DefaultValue("20971520") long maxFileBytes) {
+    }
+
+    /**
+     * Máy chấm bài lập trình (lms.code). sandbox "docker": mỗi lần chấm một container không mạng, giới hạn
+     * RAM/CPU/số tiến trình (image dựng từ judge/Dockerfile) — dùng khi triển khai thật. "local": chạy thẳng
+     * trên máy server bằng các trình biên dịch dưới đây, chỉ giới hạn thời gian và dung lượng output — chương
+     * trình của sinh viên đọc/ghi được file mà tài khoản chạy server đọc/ghi được, chỉ dùng khi phát triển.
+     * python để trống: "python" trên Windows, "python3" trên hệ khác.
+     */
+    public record Judge(
+            @DefaultValue("local") String sandbox,
+            @DefaultValue("2") int workers,
+            @DefaultValue("data/judge") String workDir,
+            @DefaultValue("docker") String docker,
+            @DefaultValue("lms-judge:1") String dockerImage,
+            @DefaultValue("gcc") String gcc,
+            @DefaultValue("g++") String gpp,
+            @DefaultValue("javac") String javac,
+            @DefaultValue("java") String java,
+            String python) {
     }
 
     public record Bootstrap(

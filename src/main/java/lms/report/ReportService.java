@@ -85,7 +85,9 @@ public class ReportService {
     @Transactional(readOnly = true)
     public Csv gradebook(String courseId, AuthPrincipal me) {
         Course c = courses.requireManaged(courseId, me);
-        List<Assessment> list = assessments.findByCourseIdOrderByCreatedAt(c.getId());
+        // Bài lập trình không có điểm: không có cột trong bảng điểm
+        List<Assessment> list = assessments.findByCourseIdOrderByCreatedAt(c.getId()).stream()
+                .filter(a -> !a.isCode()).toList();
         Map<String, BigDecimal> scores = list.isEmpty() ? Map.of()
                 : submissions.findByAssessmentIdIn(list.stream().map(Assessment::getId).toList()).stream()
                         .filter(Submission::isGraded)

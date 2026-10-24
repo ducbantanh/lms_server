@@ -4,6 +4,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -347,9 +348,15 @@ public class CourseService {
                                 .orElse(null)))
                 .toList();
         List<Assessment> assessmentList = assessments.findByCourseIdOrderByCreatedAt(c.getId());
-        Map<Long, Long> questionCounts = assessmentList.stream().noneMatch(Assessment::isQuiz) ? Map.of()
-                : quizQuestions.countByAssessmentIds(assessmentList.stream().map(Assessment::getId).toList())
-                        .stream().collect(Collectors.toMap(r -> (Long) r[0], r -> (Long) r[1]));
+        // Số câu: bài trắc nghiệm đếm câu hỏi, bài lập trình đếm câu (đề)
+        Map<Long, Long> questionCounts = new HashMap<>();
+        List<Long> ids = assessmentList.stream().map(Assessment::getId).toList();
+        if (assessmentList.stream().anyMatch(Assessment::isQuiz)) {
+            quizQuestions.countByAssessmentIds(ids).forEach(r -> questionCounts.put((Long) r[0], (Long) r[1]));
+        }
+        if (assessmentList.stream().anyMatch(Assessment::isCode)) {
+            assessments.countCodeProblems(ids).forEach(r -> questionCounts.put((Long) r[0], (Long) r[1]));
+        }
         List<AssessmentView> assessmentViews = assessmentList.stream()
                 .map(a -> {
                     CourseFile paper = Optional.ofNullable(a.getPaperFileId()).map(fileById::get).orElse(null);

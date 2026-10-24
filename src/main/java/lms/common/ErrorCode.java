@@ -46,6 +46,10 @@ public enum ErrorCode {
     NOT_ENROLLED(HttpStatus.FORBIDDEN, "You are not enrolled in this course"),
     /** Nhập quá số câu cho phép một lần, hoặc ngân hàng câu hỏi đã đầy. */
     QUESTION_LIMIT(HttpStatus.CONFLICT, "Too many questions"),
+    /** Bài lập trình: lần chạy/nộp trước của sinh viên còn đang chờ chấm. */
+    JUDGE_BUSY(HttpStatus.CONFLICT, "Previous attempt is still being judged"),
+    /** Bài lập trình: đã nộp đủ số lần giảng viên cho phép. */
+    ATTEMPT_LIMIT(HttpStatus.CONFLICT, "No submissions left"),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
 
     private final HttpStatus status;

@@ -81,6 +81,8 @@ public class AuditService {
     public static final String QUIZ_STARTED = "submission.quiz_started";
     /** Hết giờ làm bài trắc nghiệm mà chưa bấm nộp: server tự chốt và chấm (không có người thực hiện). */
     public static final String QUIZ_TIMED_OUT = "submission.quiz_timed_out";
+    /** Giảng viên bấm chấm lại mọi lần nộp của bài lập trình (sửa bộ test thì ghi assessment.updated). */
+    public static final String CODE_REJUDGED = "submission.code_rejudged";
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 
