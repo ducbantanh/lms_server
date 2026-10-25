@@ -156,7 +156,9 @@ public final class CodeViews {
 
     /**
      * Một câu. id: câu đang có (khi sửa bài), null = câu mới. archive: tên part multipart chứa file ZIP bộ test của
-     * câu (test trong ZIP thêm vào sau tests, là test ẩn); tests có thể rỗng khi có ZIP.
+     * câu (test trong ZIP thêm vào sau tests, là test ẩn); tests có thể rỗng khi có ZIP. source: câu mới lấy từ kho
+     * bài lập trình của mình (public id): bộ test chép từ kho, bỏ qua tests và archive; tiêu đề, đề, giới hạn
+     * lấy theo request (giảng viên sửa được trước khi tạo bài).
      */
     public record ProblemRequest(
             @Size(max = 22) String id,
@@ -166,7 +168,8 @@ public final class CodeViews {
             @Min(16) @Max(1024) int memoryLimitMb,
             @Min(1) @Max(100) Integer maxAttempts,
             @NotNull @Size(max = MAX_TESTS) List<@NotNull @Valid TestRequest> tests,
-            @Size(max = 40) String archive) {
+            @Size(max = 40) String archive,
+            @Size(max = 22) String source) {
     }
 
     /**
@@ -194,5 +197,35 @@ public final class CodeViews {
     }
 
     public record RunRequest(@NotBlank String language, @NotBlank @Size(max = MAX_SOURCE) String source) {
+    }
+
+    // ---------------------------------------------------------------- kho bài lập trình
+
+    /** Số câu tối đa thêm vào kho trong một lần (nhập nhanh gửi nhiều đợt). */
+    public static final int MAX_LIBRARY_BATCH = 50;
+
+    /** Một câu trong danh sách kho (không kèm đề, bộ test). */
+    public record LibraryProblem(String id, String title, String subjectCode, String subjectName, int timeLimitMs,
+            int memoryLimitMb, Integer maxAttempts, int testCount, int sampleCount, Instant createdAt,
+            Instant updatedAt) {
+    }
+
+    /** Một câu trong kho kèm đề và bộ test (như TeacherProblem). */
+    public record LibraryDetail(LibraryProblem summary, String statement, List<TestView> tests) {
+    }
+
+    /** Thêm nhiều câu vào kho, cùng một môn học (mã học phần mình dạy; trống = không gắn môn). */
+    public record LibraryCreateRequest(
+            @Size(max = 32) String subjectCode,
+            @NotEmpty @Size(max = MAX_LIBRARY_BATCH) List<@NotNull @Valid ProblemRequest> problems) {
+    }
+
+    /** Sửa một câu trong kho; problem.id, problem.source bỏ qua. */
+    public record LibraryUpdateRequest(
+            @Size(max = 32) String subjectCode,
+            @NotNull @Valid ProblemRequest problem) {
+    }
+
+    public record LibraryDeleteRequest(@NotEmpty @Size(max = 500) List<@NotBlank @Size(max = 22) String> ids) {
     }
 }

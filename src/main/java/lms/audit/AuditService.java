@@ -28,6 +28,8 @@ public class AuditService {
     public static final String USER_UNLOCKED = "user.unlocked";
     public static final String USER_DELETED = "user.deleted";
     public static final String USER_UPDATED = "user.updated";
+    /** Người dùng tự sửa thông tin liên hệ / giới thiệu ở trang hồ sơ. */
+    public static final String PROFILE_UPDATED = "user.profile_updated";
     public static final String PASSWORD_RESET = "user.password_reset";
     public static final String USERS_IMPORTED = "user.imported";
     public static final String FORCE_LOGOUT = "session.force_logout";
@@ -78,6 +80,10 @@ public class AuditService {
     public static final String QUESTION_UPDATED = "question.updated";
     public static final String QUESTIONS_DELETED = "question.deleted";
     public static final String QUESTIONS_IMPORTED = "question.imported";
+    /** Kho bài lập trình của giảng viên (target: tên câu, hoặc số câu khi thêm/xóa nhiều câu). */
+    public static final String CODE_PROBLEMS_ADDED = "code_problem.added";
+    public static final String CODE_PROBLEM_UPDATED = "code_problem.updated";
+    public static final String CODE_PROBLEMS_DELETED = "code_problem.deleted";
     public static final String QUIZ_STARTED = "submission.quiz_started";
     /** Hết giờ làm bài trắc nghiệm mà chưa bấm nộp: server tự chốt và chấm (không có người thực hiện). */
     public static final String QUIZ_TIMED_OUT = "submission.quiz_timed_out";

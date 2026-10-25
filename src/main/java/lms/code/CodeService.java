@@ -129,13 +129,13 @@ public class CodeService {
         }
         CourseContentService.requireScoreRelease(req.scoreRelease(), req.closesAt());
         List<CodeLanguage> languages = languages(req.code());
-        List<List<TestArchive.Test>> archives = archives(req.code(), files);
+        List<List<TestArchive.Test>> archives = archives(req.code().problems(), files);
         Assessment a = assessments.save(Assessment.code(c.getId(), req.type(), req.title().strip(),
                 CourseService.blankToNull(req.description()), req.opensAt(), req.closesAt(), req.scoreRelease()));
         CodeSettings s = new CodeSettings(a.getId());
         s.setLanguages(languages);
         settings.save(s);
-        Applied applied = applyProblems(a, req.code(), archives);
+        Applied applied = applyProblems(a, req.code(), archives, me.userId());
         notifications.assessmentCreated(c, a, req.notifyStudents(), me.userId());
         audit.record(me.userId(), AuditService.ASSESSMENT_CREATED, c.displayCode(),
                 a.getTitle() + " (lập trình, " + applied.problems() + " câu, " + applied.tests() + " test)");
@@ -164,10 +164,10 @@ public class CodeService {
             throw new AppException(ErrorCode.ASSESSMENT_CLOSED);
         }
         List<CodeLanguage> languages = languages(req);
-        List<List<TestArchive.Test>> archives = archives(req, files);
+        List<List<TestArchive.Test>> archives = archives(req.problems(), files);
         CodeSettings s = settings.findById(a.getId()).orElseThrow(() -> AppException.notFound("Assessment"));
         s.setLanguages(languages);
-        Applied applied = applyProblems(a, req, archives);
+        Applied applied = applyProblems(a, req, archives, me.userId());
         audit.record(me.userId(), AuditService.ASSESSMENT_UPDATED, c.displayCode(), a.getTitle() + " (lập trình, "
                 + applied.problems() + " câu, " + applied.tests() + " test, chấm lại " + applied.requeued()
                 + " lần nộp)");
@@ -190,6 +190,11 @@ public class CodeService {
     /** Đọc thử file ZIP bộ test để giảng viên xem trước khi lưu; không lưu gì. */
     public ArchiveCheck checkArchive(String courseId, MultipartFile archive, AuthPrincipal me) {
         courseService.requireTeaching(courseId, me);
+        return checkArchive(archive);
+    }
+
+    /** Như trên, không gắn khóa học (kho bài lập trình). */
+    static ArchiveCheck checkArchive(MultipartFile archive) {
         TestArchive.Result r = TestArchive.read(bytes(archive), ARCHIVE_LIMITS);
         return new ArchiveCheck(r.tests().stream().map(t -> new ArchiveTest(t.name(), utf8(t.input()),
                 utf8(t.expected()))).toList(), r.problems(), r.ignored());
@@ -465,10 +470,11 @@ public class CodeService {
     }
 
     /** Đọc trước mọi file ZIP (lỗi thì chưa ghi gì); phần tử i là test trong ZIP của câu i (rỗng nếu không có). */
-    private static List<List<TestArchive.Test>> archives(CodeRequest req, Map<String, MultipartFile> files) {
+    static List<List<TestArchive.Test>> archives(List<ProblemRequest> list, Map<String, MultipartFile> files) {
         List<List<TestArchive.Test>> out = new ArrayList<>();
-        for (ProblemRequest p : req.problems()) {
-            if (p.archive() == null) {
+        for (ProblemRequest p : list) {
+            // Câu lấy từ kho chép bộ test của kho, không dùng ZIP gửi kèm
+            if (p.archive() == null || p.source() != null) {
                 out.add(List.of());
                 continue;
             }
@@ -502,9 +508,11 @@ public class CodeService {
 
     /**
      * Ghi các câu theo thứ tự: giữ câu có id, thêm câu mới, xóa câu không còn (cùng lần nộp). Câu đang có mà bộ
-     * test hoặc giới hạn đổi thì đưa mọi lần nộp của câu về hàng đợi.
+     * test hoặc giới hạn đổi thì đưa mọi lần nộp của câu về hàng đợi. Câu mới có source thì chép bộ test từ câu đó
+     * trong kho bài lập trình của userId.
      */
-    private Applied applyProblems(Assessment a, CodeRequest req, List<List<TestArchive.Test>> archives) {
+    private Applied applyProblems(Assessment a, CodeRequest req, List<List<TestArchive.Test>> archives,
+            long userId) {
         Map<String, CodeProblem> existing = problems.findByAssessmentIdOrderByPosition(a.getId()).stream()
                 .collect(Collectors.toMap(CodeProblem::getPublicId, Function.identity()));
         Set<Long> kept = new HashSet<>();
@@ -520,13 +528,17 @@ public class CodeService {
                 throw new AppException(ErrorCode.VALIDATION_FAILED, "Duplicate problem");
             }
             String before = p == null ? null : signature(p, tests.findInfos(p.getId()));
+            CodeProblem source = p == null && r.source() != null
+                    ? problems.findByPublicIdAndOwnerId(r.source(), userId)
+                            .orElseThrow(() -> AppException.notFound("Library problem"))
+                    : null;
             if (p == null) {
                 p = new CodeProblem(a.getId());
             }
             p.update(i, r.title().strip(), r.statement().strip(), r.timeLimitMs(), r.memoryLimitMb(),
                     r.maxAttempts());
             p = problems.save(p);
-            testCount += applyTests(p, r.tests(), archives.get(i));
+            testCount += source != null ? copyTests(source, p) : applyTests(p, r.tests(), archives.get(i));
             if (before != null && !before.equals(signature(p, tests.findInfos(p.getId())))) {
                 requeued += requeue(p);
             }
@@ -563,7 +575,7 @@ public class CodeService {
      * Ghi bộ test của một câu: giữ test có id (đổi thứ tự, test mẫu), thêm test có nội dung, thêm test trong ZIP ở
      * cuối (test ẩn); test cũ không còn trong danh sách bị xóa. Trả về số test.
      */
-    private int applyTests(CodeProblem p, List<TestRequest> list, List<TestArchive.Test> fromArchive) {
+    int applyTests(CodeProblem p, List<TestRequest> list, List<TestArchive.Test> fromArchive) {
         Map<String, CodeTestInfo> existing = tests.findInfos(p.getId()).stream()
                 .collect(Collectors.toMap(CodeTestInfo::publicId, Function.identity()));
         int count = list.size() + fromArchive.size();
@@ -627,7 +639,28 @@ public class CodeService {
         return count;
     }
 
+    /** Chép bộ test (thứ tự, tên, test mẫu) của câu from sang câu to; đọc và ghi từng test một. */
+    int copyTests(CodeProblem from, CodeProblem to) {
+        List<CodeTestInfo> list = tests.findInfos(from.getId());
+        for (CodeTestInfo t : list) {
+            CodeJudge.Content c = testContent(t.id());
+            if (c == null) {
+                throw AppException.notFound("Test");
+            }
+            CodeTest copy = tests.save(new CodeTest(to.getId(), t.position(), t.name(), c.input(), c.expected(),
+                    t.sample()));
+            em.flush();
+            em.detach(copy);
+        }
+        return list.size();
+    }
+
     // ---------------------------------------------------------------- nội bộ: dựng view
+
+    static List<TestView> testViews(List<CodeTestInfo> list) {
+        return list.stream().map(t -> new TestView(t.publicId(), t.name(), t.input(), t.expected(),
+                t.inputTruncated(), t.expectedTruncated(), t.inputSize(), t.expectedSize(), t.sample())).toList();
+    }
 
     /** Test của một lần chạy, đúng thứ tự kết quả: chạy thử chỉ có test mẫu. */
     private List<CodeTestInfo> testsFor(CodeAttempt x) {
@@ -654,10 +687,7 @@ public class CodeService {
                         .collect(Collectors.groupingBy(CodeTestInfo::problemId));
         List<TeacherProblem> list = ps.stream().map(p -> new TeacherProblem(p.getPublicId(), p.getTitle(),
                 p.getStatement(), p.getTimeLimitMs(), p.getMemoryLimitMb(), p.getMaxAttempts(),
-                byProblem.getOrDefault(p.getId(), List.of()).stream()
-                        .map(t -> new TestView(t.publicId(), t.name(), t.input(), t.expected(), t.inputTruncated(),
-                                t.expectedTruncated(), t.inputSize(), t.expectedSize(), t.sample()))
-                        .toList()))
+                testViews(byProblem.getOrDefault(p.getId(), List.of()))))
                 .toList();
         // requireManaged cho admin xem; chỉ giảng viên phụ trách mới sửa
         boolean editable = !a.isLocked(now) && CourseService.isTeacherOf(m.course(), me);

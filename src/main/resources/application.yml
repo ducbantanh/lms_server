@@ -44,8 +44,10 @@ spring:
 server:
   address: ${APP_HOST:0.0.0.0}
   port: ${APP_PORT:8080}
-  # 'native' khi chạy sau Nginx/Caddy để lấy đúng IP client
-  forward-headers-strategy: ${APP_FORWARD_HEADERS:none}
+  # 'native': lấy IP máy người dùng từ X-Forwarded-For do gateway preview (lms_client/scripts/server.js)
+  # hoặc Nginx/Caddy gửi. Chỉ tin header này khi request đến từ chính máy chủ (tomcat.remoteip bên dưới),
+  # nên máy trong LAN gọi thẳng cổng 8080 không giả được IP.
+  forward-headers-strategy: ${APP_FORWARD_HEADERS:native}
   error:
     include-stacktrace: never
     include-message: never
@@ -53,6 +55,10 @@ server:
       enabled: false
   tomcat:
     max-swallow-size: 101MB
+    remoteip:
+      # Proxy được tin: chỉ loopback (gateway/Nginx chạy cùng máy). Mặc định của Tomcat tin cả 10.x, 192.168.x...
+      # là dải IP của chính máy sinh viên trong LAN. Proxy ở máy khác: đặt SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES.
+      internal-proxies: '127\.\d{1,3}\.\d{1,3}\.\d{1,3}|0:0:0:0:0:0:0:1'
 
 app:
   session:
