@@ -40,4 +40,11 @@ public interface CodeTestRepository extends JpaRepository<CodeTest, Long> {
     /** Số test theo từng câu: [problemId, count]. */
     @Query("select t.problemId, count(t) from CodeTest t where t.problemId in :ids group by t.problemId")
     List<Object[]> countByProblemIds(@Param("ids") Collection<Long> problemIds);
+
+    /** Số test và số test mẫu theo từng câu (kho bài lập trình): [problemId, count, samples]. */
+    @Query("""
+            select t.problemId, count(t), sum(case when t.sample = true then 1 else 0 end)
+            from CodeTest t where t.problemId in :ids group by t.problemId
+            """)
+    List<Object[]> countWithSamples(@Param("ids") Collection<Long> problemIds);
 }
