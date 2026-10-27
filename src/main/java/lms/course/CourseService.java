@@ -37,6 +37,7 @@ import lms.course.CourseViews.SectionView;
 import lms.course.CourseViews.StudentRow;
 import lms.course.CourseViews.UpdateCourseRequest;
 import lms.course.CourseViews.UserPick;
+import lms.leave.LeaveRequestFileRepository;
 import lms.quiz.QuizQuestionRepository;
 import lms.submission.SubmissionFileRepository;
 import lms.user.User;
@@ -65,13 +66,16 @@ public class CourseService {
     private final UserRepository users;
     private final SubmissionFileRepository submissionFiles;
     private final QuizQuestionRepository quizQuestions;
+    private final LeaveRequestFileRepository leaveFiles;
     private final FileStorage storage;
     private final AuditService audit;
 
     public CourseService(CourseRepository courses, EnrollmentRepository enrollments,
             CourseSectionRepository sections, LessonRepository lessons, CourseFileRepository files,
             AssessmentRepository assessments, UserRepository users, SubmissionFileRepository submissionFiles,
-            FileStorage storage, AuditService audit, QuizQuestionRepository quizQuestions) {
+            FileStorage storage, AuditService audit, QuizQuestionRepository quizQuestions,
+            LeaveRequestFileRepository leaveFiles) {
+        this.leaveFiles = leaveFiles;
         this.submissionFiles = submissionFiles;
         this.quizQuestions = quizQuestions;
         this.courses = courses;
@@ -209,6 +213,7 @@ public class CourseService {
         List<String> keys = new ArrayList<>(files.findByCourseIdOrderByCreatedAt(c.getId()).stream()
                 .map(CourseFile::getStorageKey).toList());
         keys.addAll(submissionFiles.storageKeysByCourse(c.getId()));
+        keys.addAll(leaveFiles.storageKeysByCourse(c.getId()));
         courses.delete(c);
         afterCommit(() -> keys.forEach(storage::deleteQuietly));
         audit.record(me.userId(), AuditService.COURSE_DELETED, c.displayCode(), c.getTitle(), ip);

@@ -12,6 +12,7 @@ import jakarta.annotation.PreDestroy;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -23,21 +24,25 @@ import lms.config.AppProperties;
  * Máy chấm chạy nền: mỗi nửa giây lấy các lần chạy/nộp đang chờ trong DB (cũ trước) và chấm song song tối đa
  * app.judge.workers bài. Hàng đợi nằm trong DB nên server khởi động lại không mất bài: bài đang chấm dở được đưa
  * về hàng đợi khi khởi động.
+ *
+ * Chạy trong server web (app.judge.mode=embedded, mặc định) hoặc trong process máy chấm riêng
+ * (app.judge.mode=worker, JudgeWorkerApplication); server web ở mode external thì không chấm.
  */
 @Component
+@ConditionalOnExpression("'${app.judge.mode:embedded}' != 'external'")
 public class CodeJudgeWorker {
 
     private static final Logger log = LoggerFactory.getLogger(CodeJudgeWorker.class);
 
-    private final CodeService service;
+    private final CodeJudgeQueue queue;
     private final CodeJudge judge;
     private final ExecutorService pool;
     private final Semaphore slots;
     private volatile boolean ready;
 
-    public CodeJudgeWorker(CodeService service, AppProperties props) {
+    public CodeJudgeWorker(CodeJudgeQueue queue, AppProperties props) {
         AppProperties.Judge cfg = props.judge();
-        this.service = service;
+        this.queue = queue;
         this.judge = new CodeJudge(sandbox(cfg), Path.of(cfg.workDir()));
         int workers = Math.max(1, cfg.workers());
         AtomicInteger n = new AtomicInteger();
@@ -63,7 +68,7 @@ public class CodeJudgeWorker {
 
     @EventListener(ApplicationReadyEvent.class)
     public void start() {
-        int n = service.requeueInterrupted();
+        int n = queue.requeueInterrupted();
         if (n > 0) {
             log.info("Requeued {} code attempts interrupted by a restart", n);
         }
@@ -76,13 +81,13 @@ public class CodeJudgeWorker {
             return;
         }
         try {
-            for (Long id : service.queued(slots.availablePermits())) {
+            for (Long id : queue.queued(slots.availablePermits())) {
                 if (!slots.tryAcquire()) {
                     return;
                 }
-                CodeService.Claimed claimed;
+                CodeJudgeQueue.Claimed claimed;
                 try {
-                    claimed = service.claim(id).orElse(null);
+                    claimed = queue.claim(id).orElse(null);
                 } catch (RuntimeException e) {
                     slots.release();
                     throw e;
@@ -104,10 +109,10 @@ public class CodeJudgeWorker {
         }
     }
 
-    private void run(CodeService.Claimed claimed) {
+    private void run(CodeJudgeQueue.Claimed claimed) {
         try {
             CodeJudge.Result r = judge.judge(claimed.task());
-            service.complete(claimed.attemptId(), claimed.token(), r);
+            queue.complete(claimed.attemptId(), claimed.token(), r);
         } catch (InterruptedException e) {
             // Server đang dừng: bài ở trạng thái đang chấm, lần khởi động sau đưa về hàng đợi
             Thread.currentThread().interrupt();
@@ -115,7 +120,7 @@ public class CodeJudgeWorker {
             log.error("Judging attempt {} failed", claimed.attemptId(), e);
             // Không để bài kẹt ở "đang chấm": báo lỗi máy chấm, giảng viên chấm lại được
             try {
-                service.complete(claimed.attemptId(), claimed.token(), new CodeJudge.Result(CodeJudge.SE,
+                queue.complete(claimed.attemptId(), claimed.token(), new CodeJudge.Result(CodeJudge.SE,
                         "Máy chấm gặp lỗi.", List.of(), 0, claimed.task().tests().size()));
             } catch (RuntimeException ignored) {
                 // DB lỗi: lần khởi động sau đưa bài về hàng đợi

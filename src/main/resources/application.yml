@@ -86,6 +86,9 @@ app:
     dir: ${APP_STORAGE_DIR:data/files}
     max-file-bytes: 20971520
   judge:
+    # embedded: máy chấm chạy trong server web (mặc định). external: server web chỉ đưa bài vào hàng đợi, máy chấm là
+    # process riêng chạy cùng jar với biến môi trường APP_JUDGE_MODE=worker (xem README, mục máy chấm riêng)
+    mode: ${APP_JUDGE_MODE:embedded}
     # docker: mỗi lần chấm một container cô lập (dựng image: docker build -t lms-judge:1 judge).
     # local: chạy thẳng trên máy server, KHÔNG cô lập — chỉ dùng khi phát triển (xem AppProperties.Judge)
     sandbox: ${APP_JUDGE_SANDBOX:local}

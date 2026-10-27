@@ -8,7 +8,6 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -16,7 +15,7 @@ import java.util.stream.IntStream;
 
 import jakarta.persistence.EntityManager;
 
-import org.springframework.data.domain.Limit;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -97,11 +96,13 @@ public class CodeService {
     private final NotificationService notifications;
     private final AuditService audit;
     private final EntityManager em;
+    private final CodeJudgeQueue judgeQueue;
 
     public CodeService(AssessmentRepository assessments, CourseRepository courses, CourseService courseService,
             EnrollmentRepository enrollments, SubmissionRepository submissions, UserRepository users,
             CodeSettingsRepository settings, CodeProblemRepository problems, CodeTestRepository tests,
-            CodeAttemptRepository attempts, NotificationService notifications, AuditService audit, EntityManager em) {
+            CodeAttemptRepository attempts, NotificationService notifications, AuditService audit, EntityManager em,
+            CodeJudgeQueue judgeQueue) {
         this.assessments = assessments;
         this.courses = courses;
         this.courseService = courseService;
@@ -115,6 +116,7 @@ public class CodeService {
         this.notifications = notifications;
         this.audit = audit;
         this.em = em;
+        this.judgeQueue = judgeQueue;
     }
 
     // ================================================================ giảng viên
@@ -214,8 +216,7 @@ public class CodeService {
 
     /** Nội dung đầy đủ một test; null nếu test đã bị xóa. */
     public CodeJudge.Content testContent(long testId) {
-        List<Object[]> rows = tests.content(testId);
-        return rows.isEmpty() ? null : new CodeJudge.Content((String) rows.get(0)[0], (String) rows.get(0)[1]);
+        return judgeQueue.testContent(testId);
     }
 
     /** Bảng sinh viên × câu (giảng viên luôn thấy kết quả, kể cả khi chưa công bố cho sinh viên). */
@@ -237,6 +238,50 @@ public class CodeService {
             return new ResultRow(u.getPublicId(), u.getUsername(), u.getFullName(), cells);
         }).toList();
         return new CodeResults(ps.stream().map(p -> new ProblemRef(p.getPublicId(), p.getTitle())).toList(), rows);
+    }
+
+    /**
+     * Bảng kết quả dạng CSV (UTF-8 có BOM như bảng điểm để Excel đọc đúng tiếng Việt): mỗi sinh viên đang ghi danh
+     * một dòng, mỗi câu một cột ("AC 5/5 (2 lần)"), cuối là số câu đúng và tổng số lần nộp.
+     */
+    @Transactional(readOnly = true)
+    public ReportService.Csv resultsCsv(String courseId, String assessmentId, AuthPrincipal me) {
+        Managed m = requireManagedCode(courseId, assessmentId, me);
+        CodeResults r = results(courseId, assessmentId, me);
+        audit.record(me.userId(), AuditService.CODE_RESULTS_EXPORTED, m.course().displayCode(),
+                m.assessment().getTitle() + " · " + r.rows().size() + " sinh viên, " + r.problems().size() + " câu");
+        return new ReportService.Csv("ket-qua-" + ReportService.fileSafe(m.course().displayCode() + " "
+                + m.assessment().getTitle()) + ".csv", csv(r).getBytes(StandardCharsets.UTF_8));
+    }
+
+    static String csv(CodeResults r) {
+        List<String> header = new ArrayList<>(List.of("MSSV", "Họ tên"));
+        for (int i = 0; i < r.problems().size(); i++) {
+            header.add("Câu " + (i + 1) + ": " + r.problems().get(i).title());
+        }
+        header.addAll(List.of("Số câu đúng", "Số lần nộp"));
+        StringBuilder out = new StringBuilder("﻿").append(ReportService.csvLine(header));
+        for (ResultRow row : r.rows()) {
+            List<String> cells = new ArrayList<>(List.of(row.username(), row.fullName()));
+            row.cells().forEach(c -> cells.add(cellText(c)));
+            cells.add(Long.toString(row.cells().stream().filter(c -> CodeViews.ACCEPTED.equals(c.status())).count()));
+            cells.add(Integer.toString(row.cells().stream().mapToInt(ResultCell::attempts).sum()));
+            out.append(ReportService.csvLine(cells));
+        }
+        return out.toString();
+    }
+
+    /** "AC 5/5 (2 lần)", "WA 3/5 (1 lần)", "Đang chấm (1 lần)"; chưa nộp thì để trống. */
+    static String cellText(ResultCell c) {
+        if (CodeViews.NONE.equals(c.status())) {
+            return "";
+        }
+        String times = " (" + c.attempts() + " lần)";
+        if (c.best() == null) {
+            return (CodeViews.PENDING.equals(c.status()) ? "Đang chấm" : "Đã nộp") + times;
+        }
+        return c.best().verdict() + " " + c.best().passed() + "/" + c.best().total()
+                + (CodeViews.PENDING.equals(c.status()) ? ", đang chấm lần mới" : "") + times;
     }
 
     /** Các lần chạy/nộp của một sinh viên đang ghi danh ở mọi câu (không kèm mã nguồn). */
@@ -346,51 +391,6 @@ public class CodeService {
         AttemptView v = summary(info(x), ids, visible);
         return withSource(v, x.getSource(),
                 visible && CodeJudge.CE.equals(x.getVerdict()) ? x.getCompileOutput() : null, null);
-    }
-
-    // ================================================================ CodeJudgeWorker
-
-    /** Bài đã nhận để chấm: token để complete() biết kết quả còn dùng được không. */
-    public record Claimed(long attemptId, String token, CodeJudge.Task task) {
-    }
-
-    @Transactional(readOnly = true)
-    public List<Long> queued(int limit) {
-        return attempts.findQueuedIds(Limit.of(limit));
-    }
-
-    /** Nhận một bài đang chờ (đặt RUNNING); empty nếu bài đã bị worker khác nhận hoặc đã xóa. */
-    @Transactional
-    public Optional<Claimed> claim(long attemptId) {
-        CodeAttempt x = attempts.lockById(attemptId).orElse(null);
-        if (x == null || x.getStatus() != CodeAttempt.QUEUED) {
-            return Optional.empty();
-        }
-        CodeProblem p = problems.findById(x.getProblemId()).orElse(null);
-        if (p == null) {
-            return Optional.empty();
-        }
-        String token = x.claim();
-        // Nội dung từng test đọc khi tới lượt chạy (repository tự mở giao dịch đọc)
-        List<CodeJudge.TestCase> cases = testsFor(x).stream()
-                .map(t -> new CodeJudge.TestCase(t.sample(), () -> testContent(t.id()))).toList();
-        return Optional.of(new Claimed(x.getId(), token, new CodeJudge.Task(x.getLanguage(), x.getSource(), cases,
-                p.getTimeLimitMs(), p.getMemoryLimitMb())));
-    }
-
-    /** Lưu kết quả; bài đã bị đưa về hàng đợi (chấm lại) hoặc bị xóa trong lúc chạy thì bỏ qua. */
-    @Transactional
-    public void complete(long attemptId, String token, CodeJudge.Result result) {
-        CodeAttempt x = attempts.lockById(attemptId).orElse(null);
-        if (x == null || x.getStatus() != CodeAttempt.RUNNING || !token.equals(x.getClaimToken())) {
-            return;
-        }
-        x.finish(result, Instant.now());
-    }
-
-    @Transactional
-    public int requeueInterrupted() {
-        return attempts.requeueRunning();
     }
 
     // ---------------------------------------------------------------- nội bộ: quyền

@@ -1,5 +1,6 @@
 package lms.code;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -53,9 +54,13 @@ public interface CodeAttemptRepository extends JpaRepository<CodeAttempt, Long> 
             + " and a.status <> 2")
     boolean hasPending(@Param("problemId") long problemId, @Param("userId") long userId);
 
-    /** Bài chờ chấm, cũ trước. */
-    @Query("select a.id from CodeAttempt a where a.status = 0 order by a.id")
-    List<Long> findQueuedIds(Limit limit);
+    /** Bài chờ chấm, cũ trước; bài tự chấm lại vì lỗi máy chấm chỉ nhận khi tới retryAt. */
+    @Query("""
+            select a.id from CodeAttempt a
+            where a.status = 0 and (a.retryAt is null or a.retryAt <= :now)
+            order by a.id
+            """)
+    List<Long> findQueuedIds(@Param("now") Instant now, Limit limit);
 
     /** Khóa dòng khi worker nhận bài hoặc lưu kết quả: chấm lại (sửa test) không chen vào giữa. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

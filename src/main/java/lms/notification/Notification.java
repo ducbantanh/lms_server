@@ -22,6 +22,10 @@ public class Notification {
     public static final int CATEGORY_PRACTICE = 2;
     public static final int CATEGORY_CONTENT = 3;
     public static final int CATEGORY_ANNOUNCEMENT = 4;
+    /** Lịch học thay đổi: buổi bù, hủy, dời (do admin xếp). */
+    public static final int CATEGORY_SCHEDULE = 5;
+    /** Kết quả duyệt đơn xin nghỉ (gửi riêng sinh viên viết đơn). */
+    public static final int CATEGORY_LEAVE = 6;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

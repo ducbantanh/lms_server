@@ -14,7 +14,8 @@ public final class NotificationViews {
     }
 
     /** Tên loại trong API, theo chỉ số Notification.CATEGORY_*. */
-    static final List<String> CATEGORIES = List.of("exam", "lab", "practice", "content", "announcement");
+    static final List<String> CATEGORIES = List.of("exam", "lab", "practice", "content", "announcement",
+            "schedule", "leave");
 
     public record CourseRef(String id, String code, String title) {
     }

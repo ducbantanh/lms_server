@@ -15,6 +15,8 @@ public final class Permissions {
     public static final String COURSES_ASSIGN = "courses.assign";
     public static final String SUBMISSIONS_CREATE = "submissions.create";
     public static final String SUBMISSIONS_MANAGE = "submissions.manage";
+    /** Danh mục phòng học và lịch học của mọi khóa học (chỉ admin). */
+    public static final String SCHEDULES_MANAGE = "schedules.manage";
 
     private Permissions() {
     }
