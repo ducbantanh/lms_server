@@ -50,6 +50,26 @@ public enum ErrorCode {
     JUDGE_BUSY(HttpStatus.CONFLICT, "Previous attempt is still being judged"),
     /** Bài lập trình: đã nộp đủ số lần giảng viên cho phép. */
     ATTEMPT_LIMIT(HttpStatus.CONFLICT, "No submissions left"),
+    /** Lịch học: buổi mới chung tiết với buổi cùng phòng, cùng giảng viên hoặc cùng khóa học; details = buổi trùng. */
+    SCHEDULE_CONFLICT(HttpStatus.CONFLICT, "Schedule conflicts with existing classes"),
+    /** Tên phòng học đã có trong danh mục. */
+    ROOM_NAME_TAKEN(HttpStatus.CONFLICT, "A room with this name already exists"),
+    /** Phòng đã được xếp lịch nên không xóa được; ngừng dùng phòng thay vì xóa. */
+    ROOM_IN_USE(HttpStatus.CONFLICT, "Room is used by schedules"),
+    /** Phòng đã ngừng dùng: không xếp được lịch mới vào phòng này. */
+    ROOM_INACTIVE(HttpStatus.CONFLICT, "Room is no longer in use"),
+    /** Buổi học đã mở điểm danh: không dời, hủy hay xóa được (xóa buổi điểm danh trước). */
+    MEETING_HAS_ATTENDANCE(HttpStatus.CONFLICT, "Attendance was already taken for this class"),
+    /** Mở điểm danh cho buổi học đã hủy. */
+    MEETING_CANCELLED(HttpStatus.CONFLICT, "This class was cancelled"),
+    /** Mở điểm danh cho buổi học của ngày sau hôm nay. */
+    MEETING_NOT_STARTED(HttpStatus.CONFLICT, "This class has not taken place yet"),
+    /** Đơn xin nghỉ gửi sau hạn (giờ bắt đầu buổi học trừ số giờ giảng viên quy định); details = {deadline}. */
+    LEAVE_DEADLINE_PASSED(HttpStatus.CONFLICT, "Too late to request leave for this class"),
+    /** Sinh viên đã có đơn xin nghỉ cho buổi này. */
+    LEAVE_ALREADY_REQUESTED(HttpStatus.CONFLICT, "Leave already requested for this class"),
+    /** Đơn đã được giảng viên duyệt nên không rút được. */
+    LEAVE_ALREADY_REVIEWED(HttpStatus.CONFLICT, "Leave request was already reviewed"),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
 
     private final HttpStatus status;

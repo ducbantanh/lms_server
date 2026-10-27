@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,6 +36,7 @@ import lms.code.CodeViews.StudentCode;
 import lms.code.CodeViews.TeacherCode;
 import lms.common.ApiResponse;
 import lms.course.CourseViews.AssessmentView;
+import lms.report.ReportService;
 
 /**
  * API giảng viên: tạo bài lập trình nhiều câu (bộ test soạn tay và/hoặc file ZIP), sửa câu và bộ test, tải bộ test,
@@ -105,6 +107,19 @@ public class TeacherCodeController {
     public ApiResponse<CodeResults> results(@PathVariable String courseId, @PathVariable String assessmentId,
             AuthPrincipal me) {
         return ApiResponse.ok(service.results(courseId, assessmentId, me));
+    }
+
+    @GetMapping("/assessments/{assessmentId}/code/results.csv")
+    public ResponseEntity<byte[]> resultsCsv(@PathVariable String courseId, @PathVariable String assessmentId,
+            AuthPrincipal me) {
+        ReportService.Csv csv = service.resultsCsv(courseId, assessmentId, me);
+        return ResponseEntity.ok()
+                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(csv.fileName(), StandardCharsets.UTF_8).build()
+                                .toString())
+                .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
+                .body(csv.content());
     }
 
     /**

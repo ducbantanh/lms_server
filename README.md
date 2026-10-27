@@ -45,12 +45,13 @@ Chạy test: `mvn test`
 
 ```
 src/main/java/lms/
-├── LmsServerApplication.java
+├── LmsServerApplication.java   APP_JUDGE_MODE=worker thì chạy JudgeWorkerApplication (máy chấm riêng, không web)
+├── JudgeWorkerApplication.java
 ├── config/            P1  AppProperties, WebMvcConfig, PasswordConfig, seed admin, DevConsoleGuard
 ├── common/            P1  ApiResponse, ErrorCode, AppException, GlobalExceptionHandler, RandomTokens
 ├── auth/              P2  login/logout/me/change-password, AuthInterceptor, Role, PermissionService
 │   └── session/       P2  SessionEntity, SessionService (opaque token), SessionCookies
-├── realtime/          P3  WebSocketConfig, handshake auth, RealtimeHub (presence), sweeper
+├── realtime/          P3  WebSocketConfig, handshake auth, RealtimeHub (presence), sweeper; RealtimeRelay gửi sự kiện thẳng hoặc qua realtime_outbox khi máy chấm chạy process riêng
 ├── user/              P4  User, AdminUserController, UserAdminService
 │   └── importing/     P4  StudentImportParser (Java thuần), StudentImportService
 ├── audit/             P1  AuditService, AuditController
@@ -61,9 +62,11 @@ src/main/java/lms/
 ├── code/                  Bài lập trình nhiều câu, không điểm (kết quả = số test đúng): mỗi câu đề + bộ test (test mẫu / ẩn, soạn tay hoặc ZIP), sinh viên chạy thử / nộp nhiều lần, hàng đợi trong DB, CodeJudgeWorker chấm nền trong sandbox (LocalSandbox / DockerSandbox); /teacher/.../code-assessments, /student/assessments/{id}/code/**
 ├── quiz/                  Bài trắc nghiệm tạo từ ngân hàng (chép câu hỏi sang bài), sinh viên làm và server chấm (QuizGrader), QuizSweeper chốt bài hết giờ; /teacher/.../quizzes, /student/assessments/{id}/quiz/**
 ├── question/              Ngân hàng câu hỏi trắc nghiệm của giảng viên, nhập câu hỏi từ văn bản (QuestionImportParser); /teacher/question-banks/**
-└── notification/          Thông báo: tự động khi tạo bài, tùy chọn khi thêm nội dung, giảng viên soạn; /notifications/**, /teacher/.../notifications
+├── notification/          Thông báo: tự động khi tạo bài, tùy chọn khi thêm nội dung, giảng viên soạn; /notifications/**, /teacher/.../notifications
+├── leave/                 Đơn xin nghỉ buổi học: sinh viên gửi lý do + minh chứng (ảnh/PDF) trước hạn giảng viên quy định, giảng viên duyệt, đồng ý thì điểm danh "có phép"; /student/meetings/{id}/leave-request, /teacher/.../leave-requests, /leave-files/**
+└── schedule/              Lịch học do admin xếp: danh mục phòng học, lịch lặp hằng tuần sinh sẵn từng buổi (ScheduleRules: 1 tiết = 1 giờ), kiểm tra trùng phòng/giảng viên/lớp, buổi bù/dời/nghỉ, mở điểm danh từ buổi học; /admin/rooms, /admin/schedules, /admin/meetings, /schedule
 src/main/resources/
-├── db/migration/      P1  V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học, V5 bài học, V6 đề riêng của bài, V7 bài nộp, V8 chấm điểm, V9 thông báo, …, V14 điểm danh, V15–V16 ngân hàng câu hỏi theo môn học, V17 bài trắc nghiệm, V18 công bố điểm sau giờ đóng, V19–V21 bài lập trình (bộ test ZIP, nhiều câu)
+├── db/migration/      P1  V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học, V5 bài học, V6 đề riêng của bài, V7 bài nộp, V8 chấm điểm, V9 thông báo, …, V14 điểm danh, V15–V16 ngân hàng câu hỏi theo môn học, V17 bài trắc nghiệm, V18 công bố điểm sau giờ đóng, V19–V21 bài lập trình (bộ test ZIP, nhiều câu), V24 lịch học, V25 đơn xin nghỉ, V26 tự chấm lại khi lỗi máy chấm, V27 hàng đợi sự kiện realtime của máy chấm riêng
 └── static/            P5, P6  frontend build (AdminLTE / Next export) đặt ở đây
 ```
 
@@ -161,14 +164,33 @@ Frontend hiển thị thông báo dựa vào `error.code`. Không hiển thị `
 | POST | `/teacher/courses/{id}/code-test-archive` | `courses.manage` | Multipart part `tests`: đọc thử ZIP bộ test, không lưu gì → `{tests: [{name, inputSize, expectedSize}], problems: [{name, reason}], ignored}`; `reason`: `MISSING_INPUT` / `MISSING_OUTPUT` / `DUPLICATE` / `FILE_TOO_LARGE` (file > 8 MB) / `TOO_LARGE` (> 64 MB) / `TOO_MANY` / `NOT_ZIP` / `EMPTY`. Cặp file nhận được: `1.in`+`1.out` (input .in .inp .input; output .out .ans .ok .output .sol), `input01.txt`+`output01.txt`, kiểu Themis `Test01/BAI.INP`+`Test01/BAI.OUT`; test xếp theo tên kiểu tự nhiên, file khác bị bỏ qua (`TestArchive`) |
 | GET, PUT | `/teacher/courses/{id}/assessments/{aid}/code` | `courses.manage` | `{languages, problems: [{id, title, statement, timeLimitMs, memoryLimitMb, maxAttempts, tests: [{id, name, input, expected, inputTruncated, expectedTruncated, inputSize, expectedSize, sample}]}], pending, editable}` (test > 8 KB chỉ có 300 ký tự đầu) / sửa `code` như khi tạo (JSON hoặc multipart kèm ZIP): câu có `id` được giữ, câu không có trong danh sách bị xóa cùng các lần nộp; mỗi test `{id, sample}` để giữ test đang có, hoặc có `input`/`expected` để thêm / thay nội dung. Câu có bộ test hoặc giới hạn đổi thì mọi lần nộp của câu được **chấm lại**; bài kiểm tra đã kết thúc → `ASSESSMENT_CLOSED`; ghi audit `assessment.updated` |
 | GET | `/teacher/courses/{id}/assessments/{aid}/code/results` | `courses.manage` | Bảng sinh viên × câu `{problems: [{id, title}], rows: [{studentId, username, fullName, cells: [{problemId, status, best: {verdict, passed, total}, attempts}]}]}`; `status`: `none` chưa nộp / `pending` đang chấm / `accepted` có lần nộp AC / `rejected` đã nộp, chưa AC; `best` = lần nộp AC, không thì lần đúng nhiều test nhất |
+| GET | `/teacher/courses/{id}/assessments/{aid}/code/results.csv` | `courses.manage` | Bảng kết quả CSV (UTF-8 có BOM): mỗi sinh viên đang ghi danh một dòng, mỗi câu một cột `AC 5/5 (2 lần)` / `WA 3/5 (1 lần)` / `Đang chấm (1 lần)` / trống, cuối là số câu đúng và số lần nộp (không tính lỗi máy chấm); ghi audit `grade.code_exported` |
 | GET | `/teacher/courses/{id}/assessments/{aid}/code/problems/{pid}/tests.zip` | `courses.manage` | Tải bộ test một câu `01.in`/`01.out`… theo thứ tự (nạp lại được bằng ZIP) |
 | POST | `/teacher/courses/{id}/assessments/{aid}/code/rejudge` | `courses.manage` | Chấm lại mọi lần nộp (vd. sau lỗi máy chấm `SE`), kể cả bài đã kết thúc; ghi audit `submission.code_rejudged` |
 | GET | `/teacher/courses/{id}/assessments/{aid}/submissions/{studentId}/code` | `courses.manage` | `{studentId, username, fullName, attempts}`: các lần chạy/nộp ở mọi câu (có `problemId`), mới nhất trước, không kèm mã nguồn |
 | GET | `/teacher/courses/{id}/assessments/{aid}/code/attempts/{attemptId}` | `courses.manage` | Một lần chạy/nộp: `source`, `compileOutput`, `results: [{index, sample, verdict, timeMs, output, error}]` của mọi test (output chỉ giữ khi sai hoặc là test mẫu, ≤ 2000 ký tự) |
 | GET | `/student/assessments/{id}/code` | `submissions.create` | Danh sách câu `{languages: [{code, label, timeFactor}], problems: [{id, number, title, timeLimitMs, memoryLimitMb, maxAttempts, attemptsUsed, testCount, status, best}], resultsHidden, open, serverTime}`; `status` như bảng của giảng viên, thêm `submitted` (đã nộp nhưng kết quả chưa công bố: không lộ đúng/sai). Bài chưa mở → `ASSESSMENT_NOT_OPEN` |
 | GET | `/student/assessments/{id}/code/problems/{pid}` | `submissions.create` | Một câu `{problem, statement, samples: [{input, expected}], attempts, languages, resultsHidden, open, serverTime}`; `attempts[]` = `{id, problemId, kind (run / submit), language, status (queued / running / done), verdict (AC / WA / TLE / RE / OLE / CE / SE), passed, total, createdAt, judgedAt}`, kết quả chưa công bố thì `verdict`, `passed`, `total` là `null` |
-| POST | `/student/assessments/{id}/code/problems/{pid}/run`, `/submit` | `submissions.create` | `{language, source (≤ 65536 ký tự)}` → lần chạy `queued`; hỏi lại tới khi `done`. `run` chỉ chạy test mẫu (giữ 20 lần gần nhất mỗi câu). `submit` chạy mọi test, kết quả là số test đúng / tổng (**không có điểm**); lần nộp đầu tạo bài nộp `submitted`, ghi audit `submission.submitted`. Mỗi câu một lần chờ chấm mỗi lúc (`JUDGE_BUSY`); hết lượt nộp → `ATTEMPT_LIMIT`; ngoài giờ → `ASSESSMENT_NOT_OPEN` / `SUBMISSION_LOCKED`. Lỗi máy chấm (`SE`) không tính lượt |
+| POST | `/student/assessments/{id}/code/problems/{pid}/run`, `/submit` | `submissions.create` | `{language, source (≤ 65536 ký tự)}` → lần chạy `queued`; chấm xong server gửi sự kiện WebSocket `code.judged` (hoặc hỏi lại tới khi `done`). `run` chỉ chạy test mẫu (giữ 20 lần gần nhất mỗi câu). `submit` chạy mọi test, kết quả là số test đúng / tổng (**không có điểm**); lần nộp đầu tạo bài nộp `submitted`, ghi audit `submission.submitted`. Mỗi câu một lần chờ chấm mỗi lúc (`JUDGE_BUSY`); hết lượt nộp → `ATTEMPT_LIMIT`; ngoài giờ → `ASSESSMENT_NOT_OPEN` / `SUBMISSION_LOCKED`. Lỗi máy chấm (`SE`) không tính lượt và được tự chấm lại tối đa 2 lần (chờ 5 giây, rồi 10 giây) trước khi lưu SE |
 | GET | `/student/assessments/{id}/code/attempts/{attemptId}` | `submissions.create` | Một lần chạy/nộp của mình kèm mã nguồn. Chạy thử: kết quả từng test mẫu kèm output; nộp bài: chỉ kết quả chung (`AC 5/5`), lỗi biên dịch khi CE, **không có kết quả từng test** |
+| GET, POST | `/admin/rooms` | `schedules.manage` | Danh mục phòng học `[{id, name, building, capacity, note, active}]` theo tên / thêm `{name (≤ 32), building?, capacity? (1–2000), note?, active?}`; trùng tên → `ROOM_NAME_TAKEN` |
+| POST | `/admin/rooms/import` | `schedules.manage` | `{content}`: nhiều phòng, mỗi dòng `tên phòng \| tòa nhà \| sức chứa \| ghi chú` (chỉ tên bắt buộc; ngăn bằng `\|`, tab, `;` hoặc `,`; dòng tiêu đề, dòng trống, dòng `#` bỏ qua; tối đa 1000 dòng, xem `RoomImportParser`) → `{totalLines, created, duplicates, errors}`; `duplicates`/`errors` = `[{line, name, reason}]` với `ALREADY_EXISTS` / `DUPLICATE_IN_INPUT` / `INVALID_FORMAT` / `INVALID_NAME` / `INVALID_BUILDING` / `INVALID_CAPACITY` / `INVALID_NOTE`. Dòng hợp lệ được tạo, phòng đã có không bị ghi đè; ghi audit `room.imported` |
+| PUT, DELETE | `/admin/rooms/{id}` | `schedules.manage` | Sửa (cùng body; `active: false` = ngừng dùng, không xếp được lịch mới, lịch cũ giữ nguyên) / xóa phòng chưa từng xếp lịch, đã xếp → `ROOM_IN_USE` |
+| GET, POST | `/admin/schedules?course=&room=` | `schedules.manage` | Lịch lặp hằng tuần `[{id, course, room, weekday (1 thứ 2 … 7 chủ nhật), startPeriod, periods, kind (0 lý thuyết / 1 thực hành), startsOn, endsOn, meetings}]` / tạo `{courseId, roomId, weekday, startPeriod, periods, kind, startsOn, endsOn (≤ 366 ngày), notifyStudents}` → `{schedule, created, removed}`: sinh mọi buổi trong khoảng ngày (cả ngày đã qua). Tiết nằm ngoài ngày học → `VALIDATION_FAILED` (`INVALID_PERIODS`), khoảng ngày không có thứ đó → `NO_MEETINGS`, phòng ngừng dùng → `ROOM_INACTIVE`. Buổi nào chung tiết với buổi chưa hủy cùng phòng, cùng giảng viên phụ trách hoặc cùng khóa học → `SCHEDULE_CONFLICT`, `details` = `[{date, startPeriod, periods, reason (room / teacher / course), course, room}]`, không lưu gì |
+| POST | `/admin/schedules/import` | `schedules.manage` | `{content, dryRun, notifyStudents}`: nhập thời khóa biểu, mỗi dòng một lịch lặp `mã học phần, nhóm, thứ, tiết bắt đầu, số tiết, phòng, từ ngày, đến ngày, hình thức?` (ngăn bằng `,` `;` `\|` hoặc tab; thứ 2–7 / CN / "Thứ 2" / T2; ngày dd/mm/yyyy hoặc yyyy-mm-dd; hình thức LT / TH, trống = LT; tối đa 1000 dòng, xem `ScheduleImportParser`). Nhóm khớp không phân biệt hoa thường và số 0 đầu (`1` = `01`); trống = khóa không chia nhóm hoặc khóa duy nhất của học phần. → `{totalLines, imported, rules: [{line, course, room, weekday, startPeriod, periods, kind, startsOn, endsOn, meetings}], meetings, errors: [{line, label, reason, otherLine, conflicts}]}`; `reason` ngoài lỗi định dạng: `COURSE_NOT_FOUND` / `COURSE_AMBIGUOUS` / `ROOM_NOT_FOUND` / `ROOM_INACTIVE` / `INVALID_PERIODS` / `NO_MEETINGS` / `CONFLICT` (trùng lịch đã có, `conflicts` như `SCHEDULE_CONFLICT`) / `CONFLICT_IN_FILE` (trùng dòng `otherLine`). **Tất cả hoặc không**: `dryRun` hoặc có dòng lỗi thì không lưu gì (`imported: false`); ghi audit `schedule.imported`; `notifyStudents` gửi mỗi khóa học một thông báo |
+| PUT, DELETE | `/admin/schedules/{id}` | `schedules.manage` | Sửa (cùng body, `courseId` bỏ qua): buổi từ hôm nay chưa điểm danh được xếp lại theo lịch mới, buổi đã qua và buổi đã điểm danh giữ nguyên / xóa: bỏ buổi từ hôm nay chưa điểm danh, buổi đã qua giữ lại thành buổi lẻ |
+| POST | `/admin/meetings` | `schedules.manage` | Buổi lẻ (buổi bù) `{courseId, roomId, date, startPeriod, periods, kind?, note?, notifyStudents}` → buổi như `/schedule`; kiểm tra trùng như trên |
+| PATCH, DELETE | `/admin/meetings/{id}` | `schedules.manage` | Dời buổi `{roomId, date, startPeriod, periods, kind?, note?, notifyStudents}` (lần dời đầu giữ ngày, tiết ban đầu ở `originalDate`, `originalStartPeriod`) / xóa hẳn (nhập nhầm, không thông báo). Buổi đã điểm danh → `MEETING_HAS_ATTENDANCE` |
+| POST | `/admin/meetings/{id}/cancel`, `/restore` | `schedules.manage` | `{note?, notifyStudents}`: cho nghỉ / học lại (kiểm tra trùng lại). `notifyStudents` gửi thông báo loại `schedule` tới sinh viên đang ghi danh và giảng viên phụ trách |
+| GET | `/schedule?from=&to=&course=&room=` | `courses.view` | Lịch trong `[from, to]` (yyyy-MM-dd, tối đa 62 ngày) `{periods: {firstHour, periodsPerDay}, from, to, meetings, deadlines}`. Sinh viên: khóa đã ghi danh; giảng viên: khóa mình phụ trách; admin: mọi khóa học. `meetings[]` = `{id, course, room, scheduleId, date, startPeriod, periods, startsAt, endsAt, kind, cancelled, originalDate, originalStartPeriod, note, teaching, attendanceSessionId}` (`attendanceSessionId` chỉ người quản lý khóa học thấy); `deadlines[]` = mốc mở/đóng bài `{assessmentId, course, type, title, kind (opens / closes), at}` (admin chỉ có khi lọc theo khóa học) |
+| GET | `/schedule/periods` | `courses.view` | `{firstHour, periodsPerDay}`: 1 tiết = 1 giờ, cấu hình `app.schedule.first-period-hour` (mặc định 7) và `periods-per-day` (14) |
+| POST | `/teacher/courses/{id}/meetings/{meetingId}/attendance` | `courses.manage` | Giảng viên phụ trách mở buổi điểm danh gắn với buổi học → `{sessionId}`; tên "Buổi N · dd/MM", buổi hôm nay thì mở QR luôn, buổi đã qua để điểm danh thủ công. Gọi lại trả buổi đã có; buổi đã nghỉ → `MEETING_CANCELLED`, ngày sau hôm nay → `MEETING_NOT_STARTED` |
+| POST | `/student/meetings/{meetingId}/leave-request` | `courses.view` | Sinh viên đang ghi danh xin nghỉ một buổi: multipart `reason` (5–1000 ký tự) + tối đa 3 part `files` (minh chứng PDF, JPG, PNG ≤ 20 MB, kiểm tra nội dung theo đuôi) → đơn `{id, meeting, student, reason, status (0 chờ duyệt / 1 đồng ý / 2 từ chối), teacherNote, reviewerName, reviewedAt, createdAt, files}`. Hạn gửi = giờ bắt đầu buổi − `leaveNoticeHours` của khóa học (quá hạn → `LEAVE_DEADLINE_PASSED`, `details = {deadline, noticeHours}`); mỗi buổi một đơn (`LEAVE_ALREADY_REQUESTED`); buổi đã hủy → `MEETING_CANCELLED`; không ghi danh → `NOT_ENROLLED`. Lịch `/schedule` của sinh viên có `leaveDeadline`, `leave: {id, status, teacherNote}` từng buổi; của giảng viên có `pendingLeaves` |
+| DELETE | `/student/leave-requests/{id}` | `courses.view` | Rút đơn đang chờ duyệt (xóa cả file minh chứng); đã duyệt → `LEAVE_ALREADY_REVIEWED` |
+| GET | `/leave-files/{id}` | `courses.view` | Tải minh chứng (luôn tải về); chỉ người viết đơn hoặc người quản lý khóa học |
+| GET | `/teacher/courses/{id}/leave-requests` | `courses.manage` | `{noticeHours, maxNoticeHours, requests}`: đơn của khóa học, chờ duyệt trước |
+| POST | `/teacher/courses/{id}/leave-requests/{requestId}/review` | `courses.manage` | `{approve, note?}`: chỉ giảng viên phụ trách (`TEACHER_ONLY`), duyệt lại được. Đồng ý: sinh viên được điểm danh "có phép" ở buổi đó (ngay nếu buổi đã mở điểm danh, hoặc khi giảng viên mở điểm danh từ buổi học); đổi thành từ chối thì bỏ "có phép" đã ghi. Gửi thông báo loại `leave` cho sinh viên; ghi audit `leave.reviewed` |
+| PUT | `/teacher/courses/{id}/leave-settings` | `courses.manage` | `{noticeHours}` (0–720, mặc định 24): sinh viên phải gửi đơn trước giờ học ít nhất bấy nhiêu giờ; chỉ giảng viên phụ trách |
 | GET | `/submission-files/{id}` | `courses.view` | Tải file bài làm (luôn tải về); chỉ chủ bài nộp hoặc người quản lý khóa học |
 | GET | `/files/{id}` | `courses.view` | Tải tài liệu; PDF trả inline, DOCX/PPTX tải về; kiểm tra quyền mỗi lần tải |
 | GET, POST | `/teacher/courses` | `courses.manage` | Danh sách khóa học mình phụ trách (admin: tất cả); tạo `{code, group?, title, description, format, teacherId}` (chỉ admin). `group`: nhóm của học phần (≤ 16 ký tự, bỏ trống = không chia nhóm); trùng mã + nhóm → `COURSE_GROUP_TAKEN`. Sửa bằng `PUT /teacher/courses/{id}` cùng các trường (trừ `teacherId`). Nơi chỉ có một chuỗi mã (thông báo, bài nộp, nhật ký, tên file) hiện dạng `INT1340 · Nhóm 01` |
@@ -212,6 +234,7 @@ Sự kiện server gửi về có dạng `{ "type": "...", "data": {...}, "ts": 
 | `session.revoked` | các socket của session bị thu hồi | `{reason}`: `logout` / `forced` / `locked` / `deleted` / `password_changed` / `idle` (không hoạt động quá thời gian chờ của vai trò) / `expired` |
 | `notification.created` | người nhận thông báo | `{id, category, title, body, course, assessmentId, senderName, createdAt, read}` |
 | `attendance.checked_in` | giảng viên phụ trách khóa học | `{courseId, sessionId, row}`: sinh viên vừa quét QR điểm danh (`row` như một dòng của chi tiết buổi) |
+| `code.judged` | sinh viên chạy/nộp; giảng viên phụ trách (chỉ lần nộp) | `{courseId, assessmentId, problemId, attemptId, kind (run / submit)}`: một lần chạy/nộp bài lập trình vừa chấm xong. Không kèm kết quả: client tải lại qua API (bài chưa công bố kết quả thì API vẫn ẩn) |
 | `pong` | trả lời `{"type":"ping"}` | `null` |
 
 Một số quy tắc cho phía client:
@@ -258,6 +281,29 @@ docker build -t lms-judge:1 judge
 Tài khoản chạy server phải gọi được `docker`. Sandbox `local` (mặc định ở dev) chạy thẳng bằng
 gcc/g++/javac/java/python trên máy server, chỉ giới hạn thời gian và output: chương trình của sinh viên đọc/ghi
 được mọi file mà server đọc/ghi được, **không dùng khi triển khai thật**.
+
+**Máy chấm chạy process riêng.** Mặc định (`app.judge.mode=embedded`) máy chấm là các luồng trong server web:
+máy chấm treo hoặc hết RAM thì kéo theo cả server. Khi triển khai thật nên tách ra, cùng một file jar:
+
+```
+# server web: chỉ đưa bài vào hàng đợi
+APP_JUDGE_MODE=external java -jar lms-server.jar
+# máy chấm: không web/WebSocket, có thể đặt ở máy khác (máy này mới cần Docker và image lms-judge)
+APP_JUDGE_MODE=worker java -jar lms-server.jar        # hoặc: java -jar lms-server.jar --app.judge.mode=worker
+```
+
+- `worker` phải đặt bằng **biến môi trường hoặc tham số dòng lệnh**: `.env` và `application.yml` được đọc sau khi
+  đã chọn lớp khởi động, đặt ở đó thì server dừng ngay và báo lỗi (`JudgeModeGuard`). `external` đặt ở đâu cũng được.
+- Hai process dùng chung DB (cùng `.env`, cùng `APP_DB_*`) và cùng `app.judge.*` (sandbox, số luồng `workers`,
+  thư mục `data/judge`); worker không cần `data/files` vì bộ test nằm trong DB. Log của worker ghi `[lms-judge-worker]`.
+- Hàng đợi nằm trong bảng `code_attempts`: worker nhận bài bằng token nên chạy nhiều worker không chấm trùng.
+  Sự kiện `code.judged` worker ghi vào bảng `realtime_outbox` cùng transaction lưu kết quả; server web đọc bảng này
+  mỗi 300 ms rồi gửi qua WebSocket (`RealtimeOutboxPoller`), dòng cũ hơn 10 phút tự xóa.
+- Đồng hồ các máy lệch nhau không quá khoảng 30 giây, nếu không server web có thể bỏ sót sự kiện (client vẫn hỏi lại
+  mỗi 10 giây nên chỉ chậm hơn, không mất kết quả).
+- Worker khởi động lại đưa mọi bài đang chấm về hàng đợi, kể cả bài của worker khác đang chấm: kết quả vẫn đúng
+  (lần chấm cũ không ghi được vì sai token), chỉ tốn thêm một lần chấm.
+- Không có worker nào chạy thì bài nằm ở trạng thái chờ chấm, không mất; bật worker lên là chấm tiếp.
 
 ## 7. Backup & restore
 

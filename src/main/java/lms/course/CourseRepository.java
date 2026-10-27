@@ -23,6 +23,10 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
 
     Optional<Course> findByEnrollKey(String enrollKey);
 
+    /** Mọi nhóm của một học phần (so mã theo collation của bảng: không phân biệt hoa thường), kèm giảng viên. */
+    @Query("select c from Course c left join fetch c.teacher where c.code = :code")
+    List<Course> findByCodeWithTeacher(@Param("code") String code);
+
     boolean existsByEnrollKey(String enrollKey);
 
     /** Đã có khóa học cùng mã + nhóm (so sánh không phân biệt hoa thường theo collation của bảng). */

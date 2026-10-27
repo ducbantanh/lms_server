@@ -52,6 +52,10 @@ public class Course {
     @Column(name = "enroll_key", length = 16)
     private String enrollKey;
 
+    /** Đơn xin nghỉ phải gửi trước giờ bắt đầu buổi học ít nhất bấy nhiêu giờ (giảng viên phụ trách đặt). */
+    @Column(name = "leave_notice_hours", nullable = false)
+    private int leaveNoticeHours = 24;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "teacher_id")
     private User teacher;
@@ -144,6 +148,14 @@ public class Course {
 
     public void setEnrollKey(String enrollKey) {
         this.enrollKey = enrollKey;
+    }
+
+    public int getLeaveNoticeHours() {
+        return leaveNoticeHours;
+    }
+
+    public void setLeaveNoticeHours(int leaveNoticeHours) {
+        this.leaveNoticeHours = leaveNoticeHours;
     }
 
     public void setTeacher(User teacher) {

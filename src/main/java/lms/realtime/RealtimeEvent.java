@@ -18,6 +18,11 @@ public record RealtimeEvent(String type, Object data, Instant ts) {
     public static final String NOTIFICATION_CREATED = "notification.created";
     /** Gửi cho giảng viên phụ trách khi sinh viên quét QR điểm danh (cập nhật màn chiếu và danh sách). */
     public static final String ATTENDANCE_CHECKED_IN = "attendance.checked_in";
+    /**
+     * Gửi sinh viên nộp bài lập trình (và giảng viên phụ trách nếu là lần nộp) khi một lần chạy/nộp chấm xong;
+     * chỉ báo có kết quả mới, client tải lại qua API.
+     */
+    public static final String CODE_JUDGED = "code.judged";
     public static final String PONG = "pong";
 
     public static RealtimeEvent of(String type, Object data) {

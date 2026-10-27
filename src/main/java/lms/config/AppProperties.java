@@ -17,7 +17,8 @@ public record AppProperties(
         @DefaultValue Ws ws,
         @DefaultValue Bootstrap bootstrap,
         @DefaultValue Storage storage,
-        @DefaultValue Judge judge) {
+        @DefaultValue Judge judge,
+        @DefaultValue Schedule schedule) {
 
     public record Session(
             @DefaultValue("SID") String cookieName,
@@ -56,8 +57,12 @@ public record AppProperties(
      * trên máy server bằng các trình biên dịch dưới đây, chỉ giới hạn thời gian và dung lượng output — chương
      * trình của sinh viên đọc/ghi được file mà tài khoản chạy server đọc/ghi được, chỉ dùng khi phát triển.
      * python để trống: "python" trên Windows, "python3" trên hệ khác.
+     *
+     * mode: "embedded" (mặc định) máy chấm chạy trong server web; "external" server web chỉ đưa bài vào hàng đợi,
+     * máy chấm là process riêng chạy cùng jar với mode "worker" (JudgeWorkerApplication), dùng chung DB.
      */
     public record Judge(
+            @DefaultValue("embedded") String mode,
             @DefaultValue("local") String sandbox,
             @DefaultValue("2") int workers,
             @DefaultValue("data/judge") String workDir,
@@ -68,6 +73,15 @@ public record AppProperties(
             @DefaultValue("javac") String javac,
             @DefaultValue("java") String java,
             String python) {
+    }
+
+    /**
+     * Lịch học (lms.schedule): 1 tiết = 1 giờ, tiết 1 bắt đầu lúc first-period-hour giờ, mỗi ngày periods-per-day
+     * tiết. DB lưu ngày + tiết nên đổi giá trị này thì giờ của mọi buổi (cả buổi cũ) đổi theo.
+     */
+    public record Schedule(
+            @DefaultValue("7") int firstPeriodHour,
+            @DefaultValue("14") int periodsPerDay) {
     }
 
     public record Bootstrap(

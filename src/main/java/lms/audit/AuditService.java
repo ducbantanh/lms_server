@@ -65,6 +65,8 @@ public class AuditService {
     public static final String SUBMISSION_GRADED = "submission.graded";
     public static final String SUBMISSIONS_DOWNLOADED = "submission.downloaded";
     public static final String GRADES_EXPORTED = "grade.exported";
+    /** Giảng viên tải bảng kết quả bài lập trình (CSV). */
+    public static final String CODE_RESULTS_EXPORTED = "grade.code_exported";
     public static final String ATTENDANCE_SESSION_CREATED = "attendance.session_created";
     public static final String ATTENDANCE_SESSION_UPDATED = "attendance.session_updated";
     public static final String ATTENDANCE_SESSION_DELETED = "attendance.session_deleted";
@@ -89,6 +91,23 @@ public class AuditService {
     public static final String QUIZ_TIMED_OUT = "submission.quiz_timed_out";
     /** Giảng viên bấm chấm lại mọi lần nộp của bài lập trình (sửa bộ test thì ghi assessment.updated). */
     public static final String CODE_REJUDGED = "submission.code_rejudged";
+    public static final String ROOM_CREATED = "room.created";
+    public static final String ROOM_UPDATED = "room.updated";
+    public static final String ROOM_DELETED = "room.deleted";
+    public static final String ROOMS_IMPORTED = "room.imported";
+    public static final String SCHEDULE_CREATED = "schedule.created";
+    public static final String SCHEDULE_UPDATED = "schedule.updated";
+    public static final String SCHEDULE_DELETED = "schedule.deleted";
+    public static final String SCHEDULES_IMPORTED = "schedule.imported";
+    public static final String MEETING_CREATED = "meeting.created";
+    public static final String MEETING_MOVED = "meeting.moved";
+    public static final String MEETING_CANCELLED = "meeting.cancelled";
+    public static final String MEETING_RESTORED = "meeting.restored";
+    public static final String MEETING_DELETED = "meeting.deleted";
+    public static final String LEAVE_REQUESTED = "leave.requested";
+    public static final String LEAVE_WITHDRAWN = "leave.withdrawn";
+    public static final String LEAVE_REVIEWED = "leave.reviewed";
+    public static final String LEAVE_SETTINGS_UPDATED = "leave.settings_updated";
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 

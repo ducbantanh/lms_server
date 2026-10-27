@@ -67,6 +67,13 @@ public class CodeAttempt {
     @Column(name = "claim_token", length = 22)
     private String claimToken;
 
+    /** Số lần đã tự chấm lại vì lỗi máy chấm (SE); retryAt: chưa tới giờ này thì worker chưa nhận lại. */
+    @Column(name = "judge_retries", nullable = false)
+    private int judgeRetries;
+
+    @Column(name = "retry_at")
+    private Instant retryAt;
+
     @Column(length = 8)
     private String verdict;
 
@@ -131,10 +138,20 @@ public class CodeAttempt {
         r.tests().forEach(t -> results.add(new CodeResult(t.verdict(), t.timeMs(), t.output(), t.error())));
     }
 
-    /** Đưa về hàng đợi để chấm lại (bộ test đổi, giảng viên bấm chấm lại). */
+    /** Lỗi máy chấm: đưa về hàng đợi, worker nhận lại từ retryAt; kết quả lần lỗi không lưu. */
+    public void retryAfterSystemError(Instant retryAt) {
+        status = QUEUED;
+        claimToken = null;
+        judgeRetries++;
+        this.retryAt = retryAt;
+    }
+
+    /** Đưa về hàng đợi để chấm lại (bộ test đổi, giảng viên bấm chấm lại); lượt tự chấm lại tính lại từ đầu. */
     public void requeue() {
         status = QUEUED;
         claimToken = null;
+        judgeRetries = 0;
+        retryAt = null;
         verdict = null;
         passed = null;
         total = null;
@@ -194,6 +211,10 @@ public class CodeAttempt {
 
     public String getClaimToken() {
         return claimToken;
+    }
+
+    public int getJudgeRetries() {
+        return judgeRetries;
     }
 
     public String getVerdict() {
