@@ -85,6 +85,29 @@ public class Assessment {
     @Column(name = "score_release", nullable = false)
     private int scoreRelease;
 
+    /** Bài kiểm tra có giám sát (lms.proctor): sinh viên phải vào phòng thi mới xem được đề và làm bài. */
+    @Column(nullable = false)
+    private boolean proctored;
+
+    /** IP / dải CIDR được vào thi, ngăn bằng dấu phẩy (lms.proctor.IpRanges); NULL = mọi mạng. */
+    @Column(name = "proctor_networks", length = 500)
+    private String proctorNetworks;
+
+    /** Phải nhập mã phòng thi giám thị đọc (đổi mỗi phút, lms.proctor.ProctorCode). */
+    @Column(name = "proctor_access_code", nullable = false)
+    private boolean proctorAccessCode;
+
+    /** Làm bài ở chế độ toàn màn hình; thoát ra tính là vi phạm. */
+    @Column(name = "proctor_fullscreen", nullable = false)
+    private boolean proctorFullscreen = true;
+
+    /** Đủ số lần vi phạm thì khóa bài chờ giám thị mở; NULL = chỉ ghi lại. */
+    @Column(name = "proctor_max_violations")
+    private Integer proctorMaxViolations;
+
+    @Column(name = "proctor_secret", length = 43)
+    private String proctorSecret;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -231,6 +254,48 @@ public class Assessment {
 
     public void setScoreRelease(int scoreRelease) {
         this.scoreRelease = scoreRelease;
+    }
+
+    public boolean isProctored() {
+        return proctored;
+    }
+
+    /** Đang trong giờ làm bài của bài kiểm tra có giám sát: mọi thao tác làm bài phải qua phiên thi. */
+    public boolean isProctoredAt(Instant now) {
+        return proctored && type == TYPE_EXAM && isOpened(now) && !isClosed(now);
+    }
+
+    public String getProctorNetworks() {
+        return proctorNetworks;
+    }
+
+    public boolean isProctorAccessCode() {
+        return proctorAccessCode;
+    }
+
+    public boolean isProctorFullscreen() {
+        return proctorFullscreen;
+    }
+
+    public Integer getProctorMaxViolations() {
+        return proctorMaxViolations;
+    }
+
+    public String getProctorSecret() {
+        return proctorSecret;
+    }
+
+    /** Cài đặt giám sát; secret chỉ tạo một lần (đổi secret thì mã đang chiếu hết hiệu lực). */
+    public void configureProctor(boolean enabled, String networks, boolean accessCode, boolean fullscreen,
+            Integer maxViolations) {
+        this.proctored = enabled;
+        this.proctorNetworks = networks;
+        this.proctorAccessCode = accessCode;
+        this.proctorFullscreen = fullscreen;
+        this.proctorMaxViolations = maxViolations;
+        if (proctorSecret == null) {
+            proctorSecret = RandomTokens.urlSafe(32);
+        }
     }
 
     /** Sinh viên được xem điểm chưa; công bố sau giờ đóng mà bài không có giờ đóng thì coi như công bố ngay. */

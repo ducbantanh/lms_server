@@ -108,6 +108,12 @@ public class AuditService {
     public static final String LEAVE_WITHDRAWN = "leave.withdrawn";
     public static final String LEAVE_REVIEWED = "leave.reviewed";
     public static final String LEAVE_SETTINGS_UPDATED = "leave.settings_updated";
+    /** Giám sát bài kiểm tra: cài đặt, sinh viên vào phòng thi, khóa (tự động hoặc giám thị), mở khóa, cho đổi máy. */
+    public static final String PROCTOR_SETTINGS_UPDATED = "proctor.settings_updated";
+    public static final String PROCTOR_STARTED = "proctor.started";
+    public static final String PROCTOR_LOCKED = "proctor.locked";
+    public static final String PROCTOR_UNLOCKED = "proctor.unlocked";
+    public static final String PROCTOR_DEVICE_RESET = "proctor.device_reset";
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 

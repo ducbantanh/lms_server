@@ -29,6 +29,7 @@ import lms.course.CourseViews;
 import lms.course.CourseViews.AssessmentView;
 import lms.course.EnrollmentRepository;
 import lms.notification.NotificationService;
+import lms.proctor.ProctorService;
 import lms.question.BankQuestion;
 import lms.question.BankQuestionRepository;
 import lms.quiz.QuizViews.AnswerSaved;
@@ -67,11 +68,12 @@ public class QuizService {
     private final BankQuestionRepository bankQuestions;
     private final NotificationService notifications;
     private final AuditService audit;
+    private final ProctorService proctor;
 
     public QuizService(AssessmentRepository assessments, CourseRepository courses, CourseService courseService,
             EnrollmentRepository enrollments, SubmissionRepository submissions, UserRepository users,
             QuizQuestionRepository questions, QuizAnswerRepository answers, BankQuestionRepository bankQuestions,
-            NotificationService notifications, AuditService audit) {
+            NotificationService notifications, AuditService audit, ProctorService proctor) {
         this.assessments = assessments;
         this.courses = courses;
         this.courseService = courseService;
@@ -83,6 +85,7 @@ public class QuizService {
         this.bankQuestions = bankQuestions;
         this.notifications = notifications;
         this.audit = audit;
+        this.proctor = proctor;
     }
 
     // ================================================================ giảng viên
@@ -243,7 +246,7 @@ public class QuizService {
         Submission s = requireStarted(a, me);
         finalizeIfDue(a, s, now);
         if (!s.isSubmitted()) {
-            QuizGrader.Result r = finalize(a, s, nowMillis());
+            QuizGrader.Result r = finalize(a, s, nowMillis(), "submitted");
             audit.record(me.userId(), AuditService.SUBMISSION_SUBMITTED, t.course().displayCode(),
                     a.getTitle() + " (trắc nghiệm, đúng " + r.correct() + "/" + r.total() + " = "
                             + r.score().toPlainString() + ")",
@@ -308,7 +311,7 @@ public class QuizService {
         if (deadline == null || now.isBefore(deadline)) {
             return false;
         }
-        QuizGrader.Result r = finalize(a, s, deadline);
+        QuizGrader.Result r = finalize(a, s, deadline, "timed_out");
         String course = courses.findById(a.getCourseId()).map(Course::displayCode).orElse(null);
         String student = users.findById(s.getUserId()).map(User::getUsername).orElse("?");
         audit.record(null, AuditService.QUIZ_TIMED_OUT, course, a.getTitle() + " · " + student + " (đúng "
@@ -316,10 +319,12 @@ public class QuizService {
         return true;
     }
 
-    private QuizGrader.Result finalize(Assessment a, Submission s, Instant at) {
+    /** Chốt và chấm; bài có giám sát thì kết thúc phiên thi (reason: submitted / timed_out). */
+    private QuizGrader.Result finalize(Assessment a, Submission s, Instant at, String reason) {
         QuizGrader.Result r = QuizGrader.grade(questions.findByAssessmentIdOrderByPosition(a.getId()), chosenBy(s));
         s.submit(at);
         s.autoGrade(r.score(), at);
+        proctor.onWorkFinished(a, s.getUserId(), reason);
         return r;
     }
 
