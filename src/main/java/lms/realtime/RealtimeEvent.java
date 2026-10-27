@@ -23,6 +23,10 @@ public record RealtimeEvent(String type, Object data, Instant ts) {
      * chỉ báo có kết quả mới, client tải lại qua API.
      */
     public static final String CODE_JUDGED = "code.judged";
+    /** Gửi giảng viên phụ trách khi một dòng của bảng giám thị đổi (vào phòng thi, vi phạm, khóa, nộp bài). */
+    public static final String PROCTOR_UPDATED = "proctor.updated";
+    /** Gửi sinh viên khi giám thị khóa / mở khóa / cho đổi máy; client tải lại trạng thái phòng thi. */
+    public static final String PROCTOR_STATE = "proctor.state";
     public static final String PONG = "pong";
 
     public static RealtimeEvent of(String type, Object data) {

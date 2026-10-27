@@ -63,10 +63,11 @@ src/main/java/lms/
 ├── quiz/                  Bài trắc nghiệm tạo từ ngân hàng (chép câu hỏi sang bài), sinh viên làm và server chấm (QuizGrader), QuizSweeper chốt bài hết giờ; /teacher/.../quizzes, /student/assessments/{id}/quiz/**
 ├── question/              Ngân hàng câu hỏi trắc nghiệm của giảng viên, nhập câu hỏi từ văn bản (QuestionImportParser); /teacher/question-banks/**
 ├── notification/          Thông báo: tự động khi tạo bài, tùy chọn khi thêm nội dung, giảng viên soạn; /notifications/**, /teacher/.../notifications
+├── proctor/               Giám sát bài kiểm tra (chống gian lận): phòng thi gắn với một máy (phiên đăng nhập), mạng phòng thi (IpRanges), mã phòng thi đổi mỗi phút (ProctorCode), vi phạm trình duyệt báo (ProctorRules), khóa bài khi đủ số lần; ProctorInterceptor chặn API làm bài khi chưa vào phòng thi và mọi API khác khi đang thi; /student/assessments/{id}/proctor/**, /teacher/.../assessments/{aid}/proctor/**
 ├── leave/                 Đơn xin nghỉ buổi học: sinh viên gửi lý do + minh chứng (ảnh/PDF) trước hạn giảng viên quy định, giảng viên duyệt, đồng ý thì điểm danh "có phép"; /student/meetings/{id}/leave-request, /teacher/.../leave-requests, /leave-files/**
 └── schedule/              Lịch học do admin xếp: danh mục phòng học, lịch lặp hằng tuần sinh sẵn từng buổi (ScheduleRules: 1 tiết = 1 giờ), kiểm tra trùng phòng/giảng viên/lớp, buổi bù/dời/nghỉ, mở điểm danh từ buổi học; /admin/rooms, /admin/schedules, /admin/meetings, /schedule
 src/main/resources/
-├── db/migration/      P1  V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học, V5 bài học, V6 đề riêng của bài, V7 bài nộp, V8 chấm điểm, V9 thông báo, …, V14 điểm danh, V15–V16 ngân hàng câu hỏi theo môn học, V17 bài trắc nghiệm, V18 công bố điểm sau giờ đóng, V19–V21 bài lập trình (bộ test ZIP, nhiều câu), V24 lịch học, V25 đơn xin nghỉ, V26 tự chấm lại khi lỗi máy chấm, V27 hàng đợi sự kiện realtime của máy chấm riêng
+├── db/migration/      P1  V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học, V5 bài học, V6 đề riêng của bài, V7 bài nộp, V8 chấm điểm, V9 thông báo, …, V14 điểm danh, V15–V16 ngân hàng câu hỏi theo môn học, V17 bài trắc nghiệm, V18 công bố điểm sau giờ đóng, V19–V21 bài lập trình (bộ test ZIP, nhiều câu), V24 lịch học, V25 đơn xin nghỉ, V26 tự chấm lại khi lỗi máy chấm, V27 hàng đợi sự kiện realtime của máy chấm riêng, V28 giám sát bài kiểm tra
 └── static/            P5, P6  frontend build (AdminLTE / Next export) đặt ở đây
 ```
 
@@ -95,6 +96,12 @@ Frontend hiển thị thông báo dựa vào `error.code`. Không hiển thị `
 **ID.** API chỉ dùng `id` dạng chuỗi ngẫu nhiên 22 ký tự (`public_id`), không lộ id số tự tăng.
 
 **Mật khẩu ban đầu.** Tài khoản import có mật khẩu là ngày sinh, nên bị gắn cờ `mustChangePassword`. Khi cờ này bật, user chỉ gọi được `/api/v1/auth/**` và nhận lỗi `PASSWORD_CHANGE_REQUIRED` cho mọi API khác. Frontend cần chuyển user sang màn hình đổi mật khẩu.
+
+**Giám sát bài kiểm tra** (`lms.proctor`). Trong giờ làm bài của bài kiểm tra có giám sát, `ProctorInterceptor` (chạy sau `AuthInterceptor`, chỉ với sinh viên) bắt buộc:
+
+- API làm bài `/student/assessments/{id}/quiz/**`, `/code/**`, `/files/**`, `/submit` và đề `GET /files/{paperId}` chỉ chạy khi sinh viên đã vào phòng thi ở đúng máy (phiên đăng nhập), đúng mạng, không bị khóa; nếu không → `PROCTOR_REQUIRED` / `PROCTOR_OTHER_DEVICE` / `PROCTOR_NETWORK_DENIED` / `PROCTOR_LOCKED`. Đã kết thúc thì chỉ còn xem (GET), thao tác khác → `PROCTOR_FINISHED`.
+- Sinh viên đang thi (đã vào phòng, chưa kết thúc, bài chưa đóng) gọi API nào khác ngoài `/auth/**`, API của bài đang thi, đề và file bài làm của bài → `PROCTOR_IN_EXAM`, `details = {assessmentId, courseId, title}`. Hết giờ hoặc nộp bài thì tự hết chặn.
+- Trình duyệt chỉ báo sự việc; phần chặn chắc chắn là ở server (mạng, mã phòng thi, một máy, chỉ trang làm bài).
 
 **Thêm API mới:**
 
@@ -190,6 +197,16 @@ Frontend hiển thị thông báo dựa vào `error.code`. Không hiển thị `
 | GET | `/leave-files/{id}` | `courses.view` | Tải minh chứng (luôn tải về); chỉ người viết đơn hoặc người quản lý khóa học |
 | GET | `/teacher/courses/{id}/leave-requests` | `courses.manage` | `{noticeHours, maxNoticeHours, requests}`: đơn của khóa học, chờ duyệt trước |
 | POST | `/teacher/courses/{id}/leave-requests/{requestId}/review` | `courses.manage` | `{approve, note?}`: chỉ giảng viên phụ trách (`TEACHER_ONLY`), duyệt lại được. Đồng ý: sinh viên được điểm danh "có phép" ở buổi đó (ngay nếu buổi đã mở điểm danh, hoặc khi giảng viên mở điểm danh từ buổi học); đổi thành từ chối thì bỏ "có phép" đã ghi. Gửi thông báo loại `leave` cho sinh viên; ghi audit `leave.reviewed` |
+| GET | `/student/assessments/{id}/proctor` | `submissions.create` | Trạng thái phòng thi (cũng có ở `proctor` của `GET /student/assessments/{id}`, `null` với bài không giám sát) `{status, violations, maxViolations, accessCode, fullscreen, networkRestricted, networkAllowed, lockReason, startedAt, canFinish}`; `status`: `none` chưa vào / `active` / `locked` / `finished` / `other_device` (đang làm trên máy khác) |
+| POST | `/student/assessments/{id}/proctor/start` | `submissions.create` | `{accessCode?}`: vào phòng thi. Lần đầu tạo phiên thi gắn với phiên đăng nhập này (ghi audit `proctor.started`); giám thị vừa cho đổi máy thì gắn máy này. Máy khác đang làm → `PROCTOR_OTHER_DEVICE`; IP ngoài mạng phòng thi → `PROCTOR_NETWORK_DENIED` (`details = {ip}`); mã sai → `PROCTOR_CODE_INVALID` (sai 5 lần trong 5 phút → `TOO_MANY_ATTEMPTS`); đã kết thúc → `PROCTOR_FINISHED`; chưa mở / đã đóng → `ASSESSMENT_NOT_OPEN` / `SUBMISSION_LOCKED` |
+| POST | `/student/assessments/{id}/proctor/events` | `submissions.create` | Nhịp 15 giây (hoặc ngay khi có sự kiện) `{away?, fullscreen?, events: [{type, at, durationMs?, detail?}] (≤ 50)}` → trạng thái như trên. `type`: `left_page` (rời trang, `detail` tab / window / file_picker), `fullscreen_exit`, `paste_blocked`, `copy_blocked`, `shortcut_blocked`, `multi_screen`, `reloaded`; server quyết định vi phạm (`ProctorRules`): rời trang ≥ 2 giây (trừ hộp chọn file), thoát toàn màn hình (nếu bắt buộc), dán từ ngoài, màn hình phụ, đổi IP giữa giờ. Đủ `maxViolations` thì khóa bài |
+| POST | `/student/assessments/{id}/proctor/finish` | `submissions.create` | Bài lập trình: kết thúc bài thi, không chạy / nộp được nữa. Trắc nghiệm và nộp file kết thúc khi nộp bài (hoặc hết giờ) |
+| GET | `/teacher/courses/{id}/assessments/{aid}/proctor` | `courses.manage` | Bảng giám thị (giảng viên phụ trách, admin xem) `{course, assessment, settings, accessCode: {code, expiresAt, periodSeconds} \| null, summary: {students, notStarted, active, offline, locked, finished, flagged}, rows, canEdit, serverTime}`; `rows[]` = `{studentId, username, fullName, status (not_started / active / locked / finished), work, online (nhịp trong 45 giây), awaySince, fullscreen, violations, startedAt, lastSeenAt, finishedAt, ip, ipAllowed, lockReason, lastEvent}`. Chỉ bài kiểm tra (`type = 2`) |
+| GET | `/teacher/courses/{id}/assessments/{aid}/proctor/access-code` | `courses.manage` | Mã phòng thi 6 chữ số đang hiệu lực (đổi mỗi 60 giây, nhận cả mã của phút trước) |
+| PUT | `/teacher/courses/{id}/assessments/{aid}/proctor/settings` | `courses.manage` | `{enabled, networks (IP / CIDR ngăn bằng dấu phẩy, ≤ 20 mục, trống = mọi mạng), accessCode, fullscreen, maxViolations (1–100, null = chỉ ghi lại)}`; chỉ giảng viên phụ trách. Bật giám sát cần giờ đóng bài (`VALIDATION_FAILED` `CLOSE_TIME_REQUIRED`, sửa bài bỏ giờ đóng cũng vậy); mạng sai → `VALIDATION_FAILED` `INVALID_NETWORKS`, `details = {invalid}`; ghi audit `proctor.settings_updated` |
+| GET | `/teacher/courses/{id}/assessments/{aid}/proctor/students/{studentId}` | `courses.manage` | Nhật ký phòng thi `{row, userAgent, startIp, events: [{type, counted, durationMs, detail, ip, actorName, at}]}` |
+| POST | `/teacher/courses/{id}/assessments/{aid}/proctor/students/{studentId}/lock`, `/unlock` | `courses.manage` | `{reason?}`: khóa / mở khóa bài của một sinh viên → dòng bảng giám thị; mở khóa giữ nguyên số vi phạm. Ghi audit `proctor.locked` / `proctor.unlocked` |
+| POST | `/teacher/courses/{id}/assessments/{aid}/proctor/students/{studentId}/reset-device` | `courses.manage` | Cho đổi máy: bỏ gắn máy cũ, lần vào phòng thi kế tiếp gắn máy mới (vẫn kiểm tra mạng, mã phòng); ghi audit `proctor.device_reset` |
 | PUT | `/teacher/courses/{id}/leave-settings` | `courses.manage` | `{noticeHours}` (0–720, mặc định 24): sinh viên phải gửi đơn trước giờ học ít nhất bấy nhiêu giờ; chỉ giảng viên phụ trách |
 | GET | `/submission-files/{id}` | `courses.view` | Tải file bài làm (luôn tải về); chỉ chủ bài nộp hoặc người quản lý khóa học |
 | GET | `/files/{id}` | `courses.view` | Tải tài liệu; PDF trả inline, DOCX/PPTX tải về; kiểm tra quyền mỗi lần tải |
@@ -234,6 +251,8 @@ Sự kiện server gửi về có dạng `{ "type": "...", "data": {...}, "ts": 
 | `session.revoked` | các socket của session bị thu hồi | `{reason}`: `logout` / `forced` / `locked` / `deleted` / `password_changed` / `idle` (không hoạt động quá thời gian chờ của vai trò) / `expired` |
 | `notification.created` | người nhận thông báo | `{id, category, title, body, course, assessmentId, senderName, createdAt, read}` |
 | `attendance.checked_in` | giảng viên phụ trách khóa học | `{courseId, sessionId, row}`: sinh viên vừa quét QR điểm danh (`row` như một dòng của chi tiết buổi) |
+| `proctor.updated` | giảng viên phụ trách | `{courseId, assessmentId, row}`: một dòng của bảng giám thị đổi (vào phòng thi, vi phạm, rời trang / quay lại, khóa, nộp bài) |
+| `proctor.state` | sinh viên | `{assessmentId}`: giám thị khóa / mở khóa / cho đổi máy; client tải lại `GET /student/assessments/{id}` |
 | `code.judged` | sinh viên chạy/nộp; giảng viên phụ trách (chỉ lần nộp) | `{courseId, assessmentId, problemId, attemptId, kind (run / submit)}`: một lần chạy/nộp bài lập trình vừa chấm xong. Không kèm kết quả: client tải lại qua API (bài chưa công bố kết quả thì API vẫn ẩn) |
 | `pong` | trả lời `{"type":"ping"}` | `null` |
 

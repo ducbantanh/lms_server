@@ -29,6 +29,7 @@ import lms.course.EnrollmentRepository;
 import lms.course.FileStorage;
 import lms.course.UploadChecker;
 import lms.course.UploadChecker.Checked;
+import lms.proctor.ProctorService;
 import lms.quiz.QuizQuestionRepository;
 import lms.submission.SubmissionViews.CourseRef;
 import lms.submission.SubmissionViews.GradeView;
@@ -68,12 +69,14 @@ public class SubmissionService {
     private final UserRepository users;
     private final AuditService audit;
     private final QuizQuestionRepository quizQuestions;
+    private final ProctorService proctor;
 
     public SubmissionService(AssessmentRepository assessments, CourseRepository courses,
             EnrollmentRepository enrollments, CourseFileRepository courseFiles, SubmissionRepository submissions,
             SubmissionFileRepository files, FileStorage storage, UploadChecker uploads, UserRepository users,
-            AuditService audit, QuizQuestionRepository quizQuestions) {
+            AuditService audit, QuizQuestionRepository quizQuestions, ProctorService proctor) {
         this.quizQuestions = quizQuestions;
+        this.proctor = proctor;
         this.users = users;
         this.assessments = assessments;
         this.courses = courses;
@@ -86,14 +89,17 @@ public class SubmissionService {
         this.audit = audit;
     }
 
+    /** Bài kiểm tra có giám sát: đề chỉ có khi sinh viên đang ở phòng thi trên máy này (proctor.status active). */
     @Transactional(readOnly = true)
-    public StudentAssessment view(String assessmentId, AuthPrincipal me) {
+    public StudentAssessment view(String assessmentId, AuthPrincipal me, String ip) {
         Target t = requireEnrolled(assessmentId, me);
+        Assessment a = t.assessment();
         Instant now = Instant.now();
-        Submission s = submissions.findByAssessmentIdAndUserId(t.assessment().getId(), me.userId()).orElse(null);
+        Submission s = submissions.findByAssessmentIdAndUserId(a.getId(), me.userId()).orElse(null);
         Course c = t.course();
         return new StudentAssessment(new CourseRef(c.getPublicId(), c.displayCode(), c.getTitle()),
-                assessmentView(t.assessment(), now), submissionView(t.assessment(), s, now), now);
+                assessmentView(a, now, proctor.paperAllowed(a, me)), submissionView(a, s, now), now,
+                proctor.studentState(a, me, ip));
     }
 
     /** Trạng thái và điểm của người gọi ở mọi bài của khóa học đã ghi danh (mọi bài đều có một dòng). */
@@ -180,6 +186,7 @@ public class SubmissionService {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "Nothing to submit");
         }
         s.submit(now);
+        proctor.onWorkFinished(a, me.userId(), "submitted");
         audit.record(me.userId(), AuditService.SUBMISSION_SUBMITTED, t.course().displayCode(),
                 a.getTitle() + " (" + count + " file)", ip);
         return submissionView(a, s, now);
@@ -228,7 +235,12 @@ public class SubmissionService {
 
     /** Như góc nhìn sinh viên ở trang khóa học: đề chỉ có khi bài đã mở. */
     AssessmentView assessmentView(Assessment a, Instant now) {
-        CourseFile paper = a.getPaperFileId() == null || !a.isOpened(now) ? null
+        return assessmentView(a, now, true);
+    }
+
+    /** paperAllowed false: bài có giám sát mà sinh viên chưa ở phòng thi, không gửi đề. */
+    private AssessmentView assessmentView(Assessment a, Instant now, boolean paperAllowed) {
+        CourseFile paper = a.getPaperFileId() == null || !a.isOpened(now) || !paperAllowed ? null
                 : courseFiles.findById(a.getPaperFileId()).orElse(null);
         return CourseViews.assessmentView(a, paper, a.isQuiz() ? quizQuestions.countByAssessmentId(a.getId())
                 : a.isCode() ? assessments.countCodeProblems(a.getId()) : 0,

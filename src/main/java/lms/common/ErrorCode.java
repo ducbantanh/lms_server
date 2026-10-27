@@ -70,6 +70,20 @@ public enum ErrorCode {
     LEAVE_ALREADY_REQUESTED(HttpStatus.CONFLICT, "Leave already requested for this class"),
     /** Đơn đã được giảng viên duyệt nên không rút được. */
     LEAVE_ALREADY_REVIEWED(HttpStatus.CONFLICT, "Leave request was already reviewed"),
+    /** Bài kiểm tra có giám sát: phải vào phòng thi (POST .../proctor/start) trước khi xem đề, làm bài. */
+    PROCTOR_REQUIRED(HttpStatus.FORBIDDEN, "Enter the exam room first"),
+    /** Bài thi bị khóa (đủ số lần vi phạm hoặc giám thị khóa): chờ giám thị mở khóa. */
+    PROCTOR_LOCKED(HttpStatus.FORBIDDEN, "Exam is locked by the proctor"),
+    /** Bài thi đang làm trên máy (phiên đăng nhập) khác: giám thị cho đổi máy mới làm tiếp được ở máy này. */
+    PROCTOR_OTHER_DEVICE(HttpStatus.FORBIDDEN, "Exam is in progress on another device"),
+    /** IP của máy không thuộc mạng phòng thi giảng viên cho phép; details = {ip}. */
+    PROCTOR_NETWORK_DENIED(HttpStatus.FORBIDDEN, "This network is not allowed for the exam"),
+    /** Mã phòng thi sai hoặc đã đổi (mã đổi mỗi phút). */
+    PROCTOR_CODE_INVALID(HttpStatus.BAD_REQUEST, "Exam room code is invalid or expired"),
+    /** Đã kết thúc bài thi (nộp bài / bấm kết thúc): không làm tiếp được. */
+    PROCTOR_FINISHED(HttpStatus.CONFLICT, "Exam already finished"),
+    /** Đang trong giờ thi có giám sát: chỉ mở được trang làm bài; details = {assessmentId, courseId, title}. */
+    PROCTOR_IN_EXAM(HttpStatus.FORBIDDEN, "Only the exam page is available during a proctored exam"),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
 
     private final HttpStatus status;

@@ -365,8 +365,8 @@ public class CourseService {
         List<AssessmentView> assessmentViews = assessmentList.stream()
                 .map(a -> {
                     CourseFile paper = Optional.ofNullable(a.getPaperFileId()).map(fileById::get).orElse(null);
-                    // Sinh viên chỉ thấy đề khi bài đã mở
-                    boolean show = paper != null && (!studentView || a.isOpened(now));
+                    // Sinh viên chỉ thấy đề khi bài đã mở; bài có giám sát thì chỉ trong phòng thi (trang làm bài)
+                    boolean show = paper != null && (!studentView || (a.isOpened(now) && !a.isProctoredAt(now)));
                     return CourseViews.assessmentView(a, show ? paper : null,
                             questionCounts.getOrDefault(a.getId(), 0L), now);
                 }).toList();

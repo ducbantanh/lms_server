@@ -356,6 +356,10 @@ public class CourseContentService {
             throw new AppException(ErrorCode.ASSESSMENT_CLOSED);
         }
         requireWindow(req.opensAt(), req.closesAt());
+        // Bài có giám sát cần giờ đóng: hết giờ thì sinh viên tự ra khỏi chế độ thi (lms.proctor)
+        if (a.isProctored() && a.getType() == Assessment.TYPE_EXAM && req.closesAt() == null) {
+            throw new AppException(ErrorCode.VALIDATION_FAILED, "CLOSE_TIME_REQUIRED");
+        }
         a.update(req.title().trim(), CourseService.blankToNull(req.description()), req.opensAt(), req.closesAt());
         audit.record(me.userId(), AuditService.ASSESSMENT_UPDATED, c.displayCode(), a.getTitle() + " · mở "
                 + (a.getOpensAt() == null ? "ngay" : a.getOpensAt()) + " · đóng "
