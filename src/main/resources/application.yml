@@ -31,9 +31,10 @@ spring:
 
   servlet:
     multipart:
-      # Tài liệu khóa học tối đa 20 MB (app.storage.max-file-bytes); import sinh viên tự giới hạn 256 KB
+      # Tài liệu khóa học tối đa 20 MB (app.storage.max-file-bytes); import sinh viên tự giới hạn 256 KB.
+      # Cả request lớn hơn: bài lập trình nhiều câu gửi mỗi câu một file ZIP bộ test (≤ 20 MB) trong một request
       max-file-size: 20MB
-      max-request-size: 21MB
+      max-request-size: 101MB
 
   web:
     resources:
@@ -43,19 +44,27 @@ spring:
 server:
   address: ${APP_HOST:0.0.0.0}
   port: ${APP_PORT:8080}
-  # 'native' khi chạy sau Nginx/Caddy để lấy đúng IP client
-  forward-headers-strategy: ${APP_FORWARD_HEADERS:none}
+  # 'native': lấy IP máy người dùng từ X-Forwarded-For do gateway preview (lms_client/scripts/server.js)
+  # hoặc Nginx/Caddy gửi. Chỉ tin header này khi request đến từ chính máy chủ (tomcat.remoteip bên dưới),
+  # nên máy trong LAN gọi thẳng cổng 8080 không giả được IP.
+  forward-headers-strategy: ${APP_FORWARD_HEADERS:native}
   error:
     include-stacktrace: never
     include-message: never
     whitelabel:
       enabled: false
   tomcat:
-    max-swallow-size: 21MB
+    max-swallow-size: 101MB
+    remoteip:
+      # Proxy được tin: chỉ loopback (gateway/Nginx chạy cùng máy). Mặc định của Tomcat tin cả 10.x, 192.168.x...
+      # là dải IP của chính máy sinh viên trong LAN. Proxy ở máy khác: đặt SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES.
+      internal-proxies: '127\.\d{1,3}\.\d{1,3}\.\d{1,3}|0:0:0:0:0:0:0:1'
 
 app:
   session:
     cookie-name: SID
+    # Mặc định cho vai trò chưa đặt riêng (admin...); sinh viên/giảng viên do admin chỉnh ở trang Cài đặt
+    # (bảng roles, cột idle_timeout_minutes)
     idle-timeout: 2h
     absolute-timeout: 12h
     secure-cookie: ${APP_SECURE_COOKIE:false}
@@ -76,6 +85,17 @@ app:
     # Thư mục lưu tài liệu khóa học (tương đối với thư mục chạy server)
     dir: ${APP_STORAGE_DIR:data/files}
     max-file-bytes: 20971520
+  judge:
+    # embedded: máy chấm chạy trong server web (mặc định). external: server web chỉ đưa bài vào hàng đợi, máy chấm là
+    # process riêng chạy cùng jar với biến môi trường APP_JUDGE_MODE=worker (xem README, mục máy chấm riêng)
+    mode: ${APP_JUDGE_MODE:embedded}
+    # docker: mỗi lần chấm một container cô lập (dựng image: docker build -t lms-judge:1 judge).
+    # local: chạy thẳng trên máy server, KHÔNG cô lập — chỉ dùng khi phát triển (xem AppProperties.Judge)
+    sandbox: ${APP_JUDGE_SANDBOX:local}
+    # Số bài chấm song song
+    workers: ${APP_JUDGE_WORKERS:2}
+    work-dir: ${APP_JUDGE_WORK_DIR:data/judge}
+    docker-image: ${APP_JUDGE_IMAGE:lms-judge:1}
   bootstrap:
     admin-username: ${APP_ADMIN_USERNAME:admin}
     # Để trống -> server sinh mật khẩu ngẫu nhiên và in ra log MỘT lần khi tạo admin

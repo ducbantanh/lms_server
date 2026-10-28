@@ -37,8 +37,8 @@ public class StudentSubmissionController {
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<StudentAssessment> view(@PathVariable String id, AuthPrincipal me) {
-        return ApiResponse.ok(service.view(id, me));
+    public ApiResponse<StudentAssessment> view(@PathVariable String id, AuthPrincipal me, HttpServletRequest req) {
+        return ApiResponse.ok(service.view(id, me, RequestInfo.clientIp(req)));
     }
 
     /** GET /student/assessments?course=...: trạng thái và điểm của mình ở mọi bài của khóa học. */

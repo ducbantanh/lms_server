@@ -12,17 +12,35 @@ import org.springframework.data.repository.query.Param;
 public interface SubmissionRepository extends JpaRepository<Submission, Long> {
 
     /**
-     * "Đã nộp" giống SubmissionService.statusOf: bấm nộp, hoặc bài đã hết giờ mà có file (nộp khi hết giờ).
-     * Bài được chấm điểm khi sinh viên không nộp (dòng không có file) không tính.
+     * "Đã nộp" giống SubmissionService.statusOf: bấm nộp, hoặc bài đã hết giờ mà có file / đã bắt đầu làm
+     * trắc nghiệm (nộp khi hết giờ). Bài được chấm điểm khi sinh viên không nộp (dòng không có file) không tính.
      */
     String FINISHED = """
-            (s.submittedAt is not null or (a.closesAt < :now
-                and exists (select f.id from SubmissionFile f where f.submissionId = s.id)))
+            (s.submittedAt is not null or (a.closesAt < :now and (s.startedAt is not null
+                or exists (select f.id from SubmissionFile f where f.submissionId = s.id))))
             """;
 
     Optional<Submission> findByAssessmentIdAndUserId(long assessmentId, long userId);
 
+    /**
+     * Trong danh sách, những người đang thi: ghi danh khóa học có bài loại `type` đang mở và chưa bấm nộp.
+     * RealtimeSweeper giữ phiên của họ để không bị tự đăng xuất khi không hoạt động.
+     */
+    @Query("""
+            select distinct e.userId from Enrollment e, Assessment a
+            where e.userId in :userIds and a.courseId = e.courseId
+              and a.type = :type and a.opensAt <= :now and a.closesAt > :now
+              and not exists (select s.id from Submission s
+                              where s.assessmentId = a.id and s.userId = e.userId and s.submittedAt is not null)
+            """)
+    List<Long> findTakingAssessment(@Param("userIds") Collection<Long> userIds, @Param("type") int type,
+            @Param("now") Instant now);
+
     List<Submission> findByAssessmentId(long assessmentId);
+
+    /** Bài trắc nghiệm đang làm (đã bắt đầu, chưa chốt); QuizSweeper chốt những bài đã quá hạn. */
+    @Query("select s from Submission s where s.startedAt is not null and s.submittedAt is null")
+    List<Submission> findQuizInProgress();
 
     /** Bài nộp của mọi bài trong danh sách (bảng điểm cả khóa học). */
     List<Submission> findByAssessmentIdIn(Collection<Long> assessmentIds);

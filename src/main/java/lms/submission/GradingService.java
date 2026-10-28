@@ -24,8 +24,10 @@ import lms.course.Course;
 import lms.course.CourseFile;
 import lms.course.CourseFileRepository;
 import lms.course.CourseService;
+import lms.course.CourseViews;
 import lms.course.CourseViews.AssessmentView;
 import lms.course.EnrollmentRepository;
+import lms.quiz.QuizQuestionRepository;
 import lms.submission.SubmissionViews.AssessmentSubmissions;
 import lms.submission.SubmissionViews.CourseRef;
 import lms.submission.SubmissionViews.GradeRequest;
@@ -55,10 +57,12 @@ public class GradingService {
     private final SubmissionFileRepository files;
     private final UserRepository users;
     private final AuditService audit;
+    private final QuizQuestionRepository quizQuestions;
 
     public GradingService(CourseService courses, AssessmentRepository assessments, CourseFileRepository courseFiles,
             EnrollmentRepository enrollments, SubmissionRepository submissions, SubmissionFileRepository files,
-            UserRepository users, AuditService audit) {
+            UserRepository users, AuditService audit, QuizQuestionRepository quizQuestions) {
+        this.quizQuestions = quizQuestions;
         this.courses = courses;
         this.assessments = assessments;
         this.courseFiles = courseFiles;
@@ -86,7 +90,7 @@ public class GradingService {
             User u = (User) row[1];
             return row(a, u, byUser.get(u.getId()), filesBySubmission, graders, now);
         }).toList();
-        return new AssessmentSubmissions(new CourseRef(c.getPublicId(), c.getCode(), c.getTitle()),
+        return new AssessmentSubmissions(new CourseRef(c.getPublicId(), c.displayCode(), c.getTitle()),
                 teacherView(a, now), summary(rows), rows, CourseService.isTeacherOf(c, me));
     }
 
@@ -96,6 +100,10 @@ public class GradingService {
             AuthPrincipal me, String ip) {
         Course c = courses.requireTeaching(courseId, me);
         Assessment a = requireAssessment(c, assessmentId);
+        if (a.isCode()) {
+            // Bài lập trình không chấm điểm: kết quả là số test đúng của từng câu (lms.code)
+            throw new AppException(ErrorCode.BAD_REQUEST, "Code assessment has no score");
+        }
         User student = users.findByPublicId(studentId)
                 .filter(u -> enrollments.existsByCourseIdAndUserId(c.getId(), u.getId()))
                 .orElseThrow(() -> AppException.notFound("Student"));
@@ -118,7 +126,7 @@ public class GradingService {
                     me.userId(), now);
         }
         submissions.flush();
-        audit.record(me.userId(), AuditService.SUBMISSION_GRADED, c.getCode(),
+        audit.record(me.userId(), AuditService.SUBMISSION_GRADED, c.displayCode(),
                 a.getTitle() + " · " + student.getUsername() + " = "
                         + (req.score() == null ? "(xóa điểm)" : req.score().toPlainString()),
                 ip);
@@ -164,8 +172,8 @@ public class GradingService {
     /** Giảng viên luôn thấy đề, kể cả trước giờ mở. */
     private AssessmentView teacherView(Assessment a, Instant now) {
         CourseFile paper = a.getPaperFileId() == null ? null : courseFiles.findById(a.getPaperFileId()).orElse(null);
-        return new AssessmentView(a.getPublicId(), a.getType(), a.getTitle(), a.getDescription(),
-                paper == null ? null : paper.getPublicId(), paper == null ? null : paper.getName(),
-                a.getOpensAt(), a.getClosesAt(), a.statusAt(now));
+        return CourseViews.assessmentView(a, paper, a.isQuiz() ? quizQuestions.countByAssessmentId(a.getId())
+                : a.isCode() ? assessments.countCodeProblems(a.getId()) : 0,
+                now);
     }
 }

@@ -3,8 +3,9 @@ package lms.common;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
- * Lấy thông tin client từ request. Khi chạy sau proxy, bật
- * server.forward-headers-strategy=native để getRemoteAddr() trả đúng IP thật.
+ * Lấy thông tin client từ request. server.forward-headers-strategy=native (mặc định) cho getRemoteAddr()
+ * trả IP máy người dùng từ X-Forwarded-For khi request đi qua gateway/proxy chạy cùng máy
+ * (server.tomcat.remoteip.internal-proxies); request từ máy khác thì header này bị bỏ qua.
  */
 public final class RequestInfo {
 

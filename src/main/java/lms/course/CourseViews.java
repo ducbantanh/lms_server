@@ -21,13 +21,13 @@ public final class CourseViews {
 
     // ---------------------------------------------------------------- response
 
-    public record CourseSummary(String id, String code, String title, int format, long studentCount,
+    /** group: nhóm của học phần, null = không chia nhóm. */
+    public record CourseSummary(String id, String code, String group, String title, int format, long studentCount,
             String teacherName, Instant createdAt) {
     }
 
-    /** enrollKey luôn null ở góc nhìn sinh viên. */
     /** enrollKey, teacherId luôn null ở góc nhìn sinh viên; teacherId null = chưa phân công. */
-    public record CourseView(String id, String code, String title, String description, int format,
+    public record CourseView(String id, String code, String group, String title, String description, int format,
             String enrollKey, long studentCount, String teacherId, String teacherName, Instant createdAt) {
     }
 
@@ -44,9 +44,23 @@ public final class CourseViews {
             boolean hidden, Instant createdAt, Instant updatedAt) {
     }
 
-    /** paperFileId/paperFileName null khi không có đề hoặc sinh viên chưa đến giờ mở. */
+    /**
+     * paperFileId/paperFileName null khi không có đề hoặc sinh viên chưa đến giờ mở.
+     * answerMode: Assessment.MODE_*; bài trắc nghiệm có questionCount câu, timeLimitMinutes null = làm tới giờ đóng.
+     * scoreRelease: Assessment.SCORE_* (khi nào sinh viên thấy điểm). proctored: bài kiểm tra có giám sát
+     * (sinh viên vào phòng thi mới xem được đề, lms.proctor).
+     */
     public record AssessmentView(String id, int type, String title, String description, String paperFileId,
-            String paperFileName, Instant opensAt, Instant closesAt, String status) {
+            String paperFileName, Instant opensAt, Instant closesAt, String status, int answerMode,
+            Integer timeLimitMinutes, long questionCount, int scoreRelease, boolean proctored) {
+    }
+
+    /** paper null = không hiện đề (không có đề, hoặc sinh viên chưa đến giờ mở). */
+    public static AssessmentView assessmentView(Assessment a, CourseFile paper, long questionCount, Instant now) {
+        return new AssessmentView(a.getPublicId(), a.getType(), a.getTitle(), a.getDescription(),
+                paper == null ? null : paper.getPublicId(), paper == null ? null : paper.getName(),
+                a.getOpensAt(), a.getClosesAt(), a.statusAt(now), a.getAnswerMode(), a.getTimeLimitMinutes(),
+                questionCount, a.getScoreRelease(), a.isProctored() && a.getType() == Assessment.TYPE_EXAM);
     }
 
     public record CourseDetail(CourseView course, List<SectionView> sections, List<LessonView> lessons,
@@ -71,6 +85,8 @@ public final class CourseViews {
     /** Admin tạo khóa học và phân công luôn giảng viên phụ trách (public id, phải là giảng viên đang hoạt động). */
     public record CreateCourseRequest(
             @NotBlank @Size(max = 32) String code,
+            /** Nhóm của học phần, không bắt buộc (bỏ trống = không chia nhóm). */
+            @Size(max = 16) String group,
             @NotBlank @Size(max = 200) String title,
             @Size(max = 2000) String description,
             @Min(0) @Max(2) int format,
@@ -84,6 +100,7 @@ public final class CourseViews {
     /** Sửa thông tin khóa học; format chỉ đổi được giữa 0 và 1. */
     public record UpdateCourseRequest(
             @NotBlank @Size(max = 32) String code,
+            @Size(max = 16) String group,
             @NotBlank @Size(max = 200) String title,
             @Size(max = 2000) String description,
             @Min(0) @Max(2) int format) {
@@ -126,7 +143,9 @@ public final class CourseViews {
             String paperFileId,
             Instant opensAt,
             Instant closesAt,
-            boolean notifyStudents) {
+            boolean notifyStudents,
+            /** Assessment.SCORE_*; không gửi = công bố ngay. Sau giờ đóng thì cần closesAt. */
+            @Min(0) @Max(2) int scoreRelease) {
     }
 
     /** Sửa bài: tiêu đề, mô tả, giờ mở/đóng; loại bài và đề giữ nguyên. */

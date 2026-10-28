@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Size;
 
 import lms.course.CourseViews.AssessmentView;
+import lms.proctor.ProctorViews.StudentProctor;
 
 /** DTO của module bài nộp và chấm điểm, khớp lms_client/lib/teaching.ts; mọi id trả ra ngoài là public_id. */
 public final class SubmissionViews {
@@ -32,8 +33,12 @@ public final class SubmissionViews {
     public record SubmissionFileView(String id, String name, String contentType, long size, Instant createdAt) {
     }
 
-    /** Điểm thang 10 và nhận xét; gradedBy là họ tên người chấm (null nếu tài khoản đã bị xóa). */
-    public record GradeView(BigDecimal score, String feedback, Instant gradedAt, String gradedBy) {
+    /**
+     * Điểm thang 10 và nhận xét; gradedBy là họ tên người chấm (null nếu tài khoản đã bị xóa, hoặc máy chấm).
+     * autoScore: điểm máy chấm của bài trắc nghiệm (null với bài nộp file); score khác autoScore = giảng viên đã sửa.
+     */
+    public record GradeView(BigDecimal score, String feedback, Instant gradedAt, String gradedBy,
+            BigDecimal autoScore) {
     }
 
     /** editable = còn thêm/xóa file và bấm nộp được; grade null = chưa chấm. */
@@ -67,8 +72,11 @@ public final class SubmissionViews {
             @Size(max = 2000) String feedback) {
     }
 
-    /** serverTime để client đếm ngược theo giờ server, không phụ thuộc đồng hồ máy sinh viên. */
+    /**
+     * serverTime để client đếm ngược theo giờ server, không phụ thuộc đồng hồ máy sinh viên. proctor: trạng thái
+     * phòng thi của bài kiểm tra có giám sát, null với bài khác.
+     */
     public record StudentAssessment(CourseRef course, AssessmentView assessment, SubmissionView submission,
-            Instant serverTime) {
+            Instant serverTime, StudentProctor proctor) {
     }
 }

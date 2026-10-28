@@ -85,7 +85,9 @@ public class ReportService {
     @Transactional(readOnly = true)
     public Csv gradebook(String courseId, AuthPrincipal me) {
         Course c = courses.requireManaged(courseId, me);
-        List<Assessment> list = assessments.findByCourseIdOrderByCreatedAt(c.getId());
+        // Bài lập trình không có điểm: không có cột trong bảng điểm
+        List<Assessment> list = assessments.findByCourseIdOrderByCreatedAt(c.getId()).stream()
+                .filter(a -> !a.isCode()).toList();
         Map<String, BigDecimal> scores = list.isEmpty() ? Map.of()
                 : submissions.findByAssessmentIdIn(list.stream().map(Assessment::getId).toList()).stream()
                         .filter(Submission::isGraded)
@@ -111,9 +113,9 @@ public class ReportService {
             out.append(csvLine(cells));
             rows++;
         }
-        audit.record(me.userId(), AuditService.GRADES_EXPORTED, c.getCode(),
+        audit.record(me.userId(), AuditService.GRADES_EXPORTED, c.displayCode(),
                 rows + " sinh viên, " + list.size() + " bài");
-        return new Csv("bang-diem-" + fileSafe(c.getCode()) + ".csv", out.toString().getBytes(StandardCharsets.UTF_8));
+        return new Csv("bang-diem-" + fileSafe(c.displayCode()) + ".csv", out.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -150,9 +152,9 @@ public class ReportService {
             }
             students++;
         }
-        audit.record(me.userId(), AuditService.SUBMISSIONS_DOWNLOADED, c.getCode(),
+        audit.record(me.userId(), AuditService.SUBMISSIONS_DOWNLOADED, c.displayCode(),
                 a.getTitle() + " · " + students + " sinh viên, " + items.size() + " file");
-        return new Archive(fileSafe(c.getCode() + " - " + a.getTitle()) + ".zip", items);
+        return new Archive(fileSafe(c.displayCode() + " - " + a.getTitle()) + ".zip", items);
     }
 
     // ---------------------------------------------------------------- tiện ích (package-private để test)
@@ -161,7 +163,7 @@ public class ReportService {
      * Một dòng CSV: bọc nháy kép khi có dấu phẩy, nháy, xuống dòng; ô bắt đầu bằng = + - @ được thêm ' phía trước
      * để Excel không chạy như công thức (họ tên, tiêu đề bài do người dùng nhập).
      */
-    static String csvLine(List<String> cells) {
+    public static String csvLine(List<String> cells) {
         return cells.stream().map(ReportService::csvCell).collect(Collectors.joining(",")) + "\r\n";
     }
 
@@ -174,7 +176,7 @@ public class ReportService {
     }
 
     /** Tên file/thư mục dùng được trên Windows: bỏ ký tự cấm và ký tự điều khiển, cắt còn 100 ký tự. */
-    static String fileSafe(String name) {
+    public static String fileSafe(String name) {
         String s = name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_").trim().replaceAll("[. ]+$", "");
         if (s.length() > 100) {
             s = s.substring(0, 100).trim();

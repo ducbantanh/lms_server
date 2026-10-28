@@ -32,13 +32,24 @@ public class Submission {
     @Column(name = "user_id", nullable = false, updatable = false)
     private Long userId;
 
-    /** NULL = đang làm; khác NULL = đã bấm nộp, không sửa được nữa. */
+    /** Bài trắc nghiệm: lúc bấm "Bắt đầu"; NULL với bài nộp file và bài lập trình. */
+    @Column(name = "started_at")
+    private Instant startedAt;
+
+    /**
+     * NULL = đang làm; khác NULL = đã bấm nộp, không sửa được nữa (bài lập trình: lần nộp gần nhất, còn nộp lại
+     * được; không có điểm).
+     */
     @Column(name = "submitted_at")
     private Instant submittedAt;
 
     /** Điểm thang 10; NULL = chưa chấm. */
     @Column(precision = 4, scale = 2)
     private BigDecimal score;
+
+    /** Điểm máy chấm của bài trắc nghiệm; score vẫn là điểm chính thức (giảng viên sửa được). */
+    @Column(name = "auto_score", precision = 4, scale = 2)
+    private BigDecimal autoScore;
 
     @Column(length = 2000)
     private String feedback;
@@ -92,6 +103,28 @@ public class Submission {
 
     public Long getUserId() {
         return userId;
+    }
+
+    public Instant getStartedAt() {
+        return startedAt;
+    }
+
+    public void start(Instant at) {
+        this.startedAt = at;
+    }
+
+    public BigDecimal getAutoScore() {
+        return autoScore;
+    }
+
+    /** Chấm tự động bài trắc nghiệm; giảng viên đã chấm tay thì giữ điểm của giảng viên. */
+    public void autoGrade(BigDecimal score, Instant at) {
+        this.autoScore = score;
+        if (this.score == null) {
+            this.score = score;
+            this.gradedAt = at;
+            this.gradedBy = null;
+        }
     }
 
     public Instant getSubmittedAt() {
