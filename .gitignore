@@ -10,3 +10,4 @@ data/
 # File backup (scripts/backup.ps1): chứa dữ liệu sinh viên
 backups/
 system.md
+run.ps1
