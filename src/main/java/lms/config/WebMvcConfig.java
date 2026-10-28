@@ -10,21 +10,27 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import lms.auth.AuthInterceptor;
 import lms.auth.AuthPrincipalArgumentResolver;
+import lms.proctor.ProctorInterceptor;
 
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
     private final AuthInterceptor authInterceptor;
+    private final ProctorInterceptor proctorInterceptor;
     private final AuthPrincipalArgumentResolver principalResolver;
 
-    public WebMvcConfig(AuthInterceptor authInterceptor, AuthPrincipalArgumentResolver principalResolver) {
+    public WebMvcConfig(AuthInterceptor authInterceptor, ProctorInterceptor proctorInterceptor,
+            AuthPrincipalArgumentResolver principalResolver) {
         this.authInterceptor = authInterceptor;
+        this.proctorInterceptor = proctorInterceptor;
         this.principalResolver = principalResolver;
     }
 
+    /** Thứ tự đăng ký là thứ tự chạy: ProctorInterceptor cần AuthPrincipal do AuthInterceptor gắn vào request. */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(authInterceptor).addPathPatterns("/api/**");
+        registry.addInterceptor(proctorInterceptor).addPathPatterns("/api/**");
     }
 
     @Override

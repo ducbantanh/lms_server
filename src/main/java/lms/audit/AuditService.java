@@ -28,9 +28,12 @@ public class AuditService {
     public static final String USER_UNLOCKED = "user.unlocked";
     public static final String USER_DELETED = "user.deleted";
     public static final String USER_UPDATED = "user.updated";
+    /** Người dùng tự sửa thông tin liên hệ / giới thiệu ở trang hồ sơ. */
+    public static final String PROFILE_UPDATED = "user.profile_updated";
     public static final String PASSWORD_RESET = "user.password_reset";
     public static final String USERS_IMPORTED = "user.imported";
     public static final String FORCE_LOGOUT = "session.force_logout";
+    public static final String IDLE_TIMEOUT_UPDATED = "session.idle_timeout_updated";
     public static final String COURSE_CREATED = "course.created";
     public static final String COURSE_UPDATED = "course.updated";
     public static final String COURSE_ASSIGNED = "course.assigned";
@@ -62,6 +65,55 @@ public class AuditService {
     public static final String SUBMISSION_GRADED = "submission.graded";
     public static final String SUBMISSIONS_DOWNLOADED = "submission.downloaded";
     public static final String GRADES_EXPORTED = "grade.exported";
+    /** Giảng viên tải bảng kết quả bài lập trình (CSV). */
+    public static final String CODE_RESULTS_EXPORTED = "grade.code_exported";
+    public static final String ATTENDANCE_SESSION_CREATED = "attendance.session_created";
+    public static final String ATTENDANCE_SESSION_UPDATED = "attendance.session_updated";
+    public static final String ATTENDANCE_SESSION_DELETED = "attendance.session_deleted";
+    public static final String ATTENDANCE_QR_OPENED = "attendance.qr_opened";
+    public static final String ATTENDANCE_QR_CLOSED = "attendance.qr_closed";
+    public static final String ATTENDANCE_CHECKED_IN = "attendance.checked_in";
+    public static final String ATTENDANCE_MARKED = "attendance.marked";
+    public static final String ATTENDANCE_EXPORTED = "attendance.exported";
+    public static final String QUESTION_BANK_CREATED = "question_bank.created";
+    public static final String QUESTION_BANK_UPDATED = "question_bank.updated";
+    public static final String QUESTION_BANK_DELETED = "question_bank.deleted";
+    public static final String QUESTION_CREATED = "question.created";
+    public static final String QUESTION_UPDATED = "question.updated";
+    public static final String QUESTIONS_DELETED = "question.deleted";
+    public static final String QUESTIONS_IMPORTED = "question.imported";
+    /** Kho bài lập trình của giảng viên (target: tên câu, hoặc số câu khi thêm/xóa nhiều câu). */
+    public static final String CODE_PROBLEMS_ADDED = "code_problem.added";
+    public static final String CODE_PROBLEM_UPDATED = "code_problem.updated";
+    public static final String CODE_PROBLEMS_DELETED = "code_problem.deleted";
+    public static final String QUIZ_STARTED = "submission.quiz_started";
+    /** Hết giờ làm bài trắc nghiệm mà chưa bấm nộp: server tự chốt và chấm (không có người thực hiện). */
+    public static final String QUIZ_TIMED_OUT = "submission.quiz_timed_out";
+    /** Giảng viên bấm chấm lại mọi lần nộp của bài lập trình (sửa bộ test thì ghi assessment.updated). */
+    public static final String CODE_REJUDGED = "submission.code_rejudged";
+    public static final String ROOM_CREATED = "room.created";
+    public static final String ROOM_UPDATED = "room.updated";
+    public static final String ROOM_DELETED = "room.deleted";
+    public static final String ROOMS_IMPORTED = "room.imported";
+    public static final String SCHEDULE_CREATED = "schedule.created";
+    public static final String SCHEDULE_UPDATED = "schedule.updated";
+    public static final String SCHEDULE_DELETED = "schedule.deleted";
+    public static final String SCHEDULES_IMPORTED = "schedule.imported";
+    public static final String MEETING_CREATED = "meeting.created";
+    public static final String MEETING_MOVED = "meeting.moved";
+    public static final String MEETING_CANCELLED = "meeting.cancelled";
+    public static final String MEETING_RESTORED = "meeting.restored";
+    public static final String MEETING_DELETED = "meeting.deleted";
+    public static final String LEAVE_REQUESTED = "leave.requested";
+    public static final String LEAVE_WITHDRAWN = "leave.withdrawn";
+    public static final String LEAVE_REVIEWED = "leave.reviewed";
+    public static final String LEAVE_SETTINGS_UPDATED = "leave.settings_updated";
+    /** Giám sát bài kiểm tra: cài đặt, sinh viên vào phòng thi, khóa (tự động hoặc giám thị), mở khóa, cho đổi máy. */
+    public static final String PROCTOR_SETTINGS_UPDATED = "proctor.settings_updated";
+    public static final String PROCTOR_STARTED = "proctor.started";
+    public static final String PROCTOR_LOCKED = "proctor.locked";
+    public static final String PROCTOR_UNLOCKED = "proctor.unlocked";
+    public static final String PROCTOR_DEVICE_RESET = "proctor.device_reset";
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 

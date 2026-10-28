@@ -158,7 +158,7 @@ public final class AccountImportParser {
     // ---------------------------------------------------------------- nội bộ
 
     /** Ưu tiên | rồi tab rồi ; rồi , — chỉ xét ký tự ngoài dấu nháy (họ tên "A; B" không làm đổi dấu). */
-    static char detectDelimiter(String line) {
+    public static char detectDelimiter(String line) {
         StringBuilder outside = new StringBuilder();
         boolean quoted = false;
         for (char ch : line.toCharArray()) {
@@ -177,7 +177,7 @@ public final class AccountImportParser {
     }
 
     /** Tách một dòng kiểu CSV: ô bọc trong "..." được chứa dấu phân cách, "" là một dấu nháy. */
-    static List<String> split(String line, char delimiter) {
+    public static List<String> split(String line, char delimiter) {
         List<String> cells = new ArrayList<>();
         StringBuilder cell = new StringBuilder();
         boolean quoted = false;

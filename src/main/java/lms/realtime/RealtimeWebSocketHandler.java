@@ -10,9 +10,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lms.auth.AuthPrincipal;
+import lms.auth.session.SessionService;
 
 /**
- * Endpoint /ws. Server là bên phát sự kiện chính; client hiện chỉ gửi {"type":"ping"}.
+ * Endpoint /ws. Server là bên phát sự kiện chính; client chỉ gửi {"type":"ping"} và
+ * {"type":"activity"} (người dùng đang thao tác trên trang, dùng để gia hạn phiên khi không gọi API).
  * Mọi thao tác thay đổi dữ liệu vẫn đi qua HTTP API (có CSRF + permission), không qua socket.
  */
 @Component
@@ -20,10 +22,12 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
 
     private final RealtimeHub hub;
     private final ObjectMapper mapper;
+    private final SessionService sessions;
 
-    public RealtimeWebSocketHandler(RealtimeHub hub, ObjectMapper mapper) {
+    public RealtimeWebSocketHandler(RealtimeHub hub, ObjectMapper mapper, SessionService sessions) {
         this.hub = hub;
         this.mapper = mapper;
+        this.sessions = sessions;
     }
 
     @Override
@@ -47,6 +51,9 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
         }
         if ("ping".equals(type)) {
             hub.find(session.getId()).ifPresent(c -> hub.send(c, RealtimeEvent.of(RealtimeEvent.PONG, null)));
+        } else if ("activity".equals(type)) {
+            // SessionService tự giới hạn số lần ghi DB, client gửi tối đa 1 lần/15 giây
+            hub.find(session.getId()).ifPresent(c -> sessions.touch(c.principal().sessionId()));
         }
     }
 

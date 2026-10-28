@@ -4,6 +4,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -36,6 +37,8 @@ import lms.course.CourseViews.SectionView;
 import lms.course.CourseViews.StudentRow;
 import lms.course.CourseViews.UpdateCourseRequest;
 import lms.course.CourseViews.UserPick;
+import lms.leave.LeaveRequestFileRepository;
+import lms.quiz.QuizQuestionRepository;
 import lms.submission.SubmissionFileRepository;
 import lms.user.User;
 import lms.user.UserRepository;
@@ -62,14 +65,19 @@ public class CourseService {
     private final AssessmentRepository assessments;
     private final UserRepository users;
     private final SubmissionFileRepository submissionFiles;
+    private final QuizQuestionRepository quizQuestions;
+    private final LeaveRequestFileRepository leaveFiles;
     private final FileStorage storage;
     private final AuditService audit;
 
     public CourseService(CourseRepository courses, EnrollmentRepository enrollments,
             CourseSectionRepository sections, LessonRepository lessons, CourseFileRepository files,
             AssessmentRepository assessments, UserRepository users, SubmissionFileRepository submissionFiles,
-            FileStorage storage, AuditService audit) {
+            FileStorage storage, AuditService audit, QuizQuestionRepository quizQuestions,
+            LeaveRequestFileRepository leaveFiles) {
+        this.leaveFiles = leaveFiles;
         this.submissionFiles = submissionFiles;
+        this.quizQuestions = quizQuestions;
         this.courses = courses;
         this.enrollments = enrollments;
         this.sections = sections;
@@ -129,11 +137,17 @@ public class CourseService {
     @Transactional
     public CourseView create(CreateCourseRequest req, AuthPrincipal me, String ip) {
         User teacher = requireTeacher(req.teacherId());
-        Course c = new Course(req.code().trim(), req.title().trim(), teacher);
+        String code = req.code().trim();
+        String group = blankToNull(req.group());
+        if (group != null && courses.existsByCodeAndGroupName(code, group)) {
+            throw new AppException(ErrorCode.COURSE_GROUP_TAKEN);
+        }
+        Course c = new Course(code, req.title().trim(), teacher);
+        c.setGroupName(group);
         c.setDescription(blankToNull(req.description()));
         c.setFormat(req.format());
         courses.save(c);
-        audit.record(me.userId(), AuditService.COURSE_CREATED, c.getCode(),
+        audit.record(me.userId(), AuditService.COURSE_CREATED, c.displayCode(),
                 c.getTitle() + " · giảng viên " + teacher.getUsername(), ip);
         return view(c, false, 0);
     }
@@ -145,7 +159,7 @@ public class CourseService {
         User teacher = requireTeacher(teacherId);
         String before = c.getTeacher() == null ? "(chưa có)" : c.getTeacher().getUsername();
         c.setTeacher(teacher);
-        audit.record(me.userId(), AuditService.COURSE_ASSIGNED, c.getCode(), before + " → " + teacher.getUsername());
+        audit.record(me.userId(), AuditService.COURSE_ASSIGNED, c.displayCode(), before + " → " + teacher.getUsername());
         return view(c, false, enrollments.countByCourseId(c.getId()));
     }
 
@@ -164,7 +178,7 @@ public class CourseService {
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_TEACHER));
     }
 
-    /** Sửa mã, tên, mô tả; đổi dạng chỉ giữa "mục tự đặt tên" và "theo tuần" (dạng chỉ tài liệu không có mục/bài). */
+    /** Sửa mã, nhóm, tên, mô tả; đổi dạng chỉ giữa "mục tự đặt tên" và "theo tuần" (dạng chỉ tài liệu không có mục/bài). */
     @Transactional
     public CourseView update(String publicId, UpdateCourseRequest req, AuthPrincipal me) {
         Course c = requireManaged(publicId, me);
@@ -172,12 +186,18 @@ public class CourseService {
                 && (req.format() == Course.FORMAT_FILES_ONLY || c.getFormat() == Course.FORMAT_FILES_ONLY)) {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "Files-only format cannot be changed");
         }
-        String before = c.getCode() + " – " + c.getTitle();
-        c.setCode(req.code().trim());
+        String code = req.code().trim();
+        String group = blankToNull(req.group());
+        if (group != null && courses.existsByCodeAndGroupNameAndIdNot(code, group, c.getId())) {
+            throw new AppException(ErrorCode.COURSE_GROUP_TAKEN);
+        }
+        String before = c.displayCode() + " – " + c.getTitle();
+        c.setCode(code);
+        c.setGroupName(group);
         c.setTitle(req.title().trim());
         c.setDescription(blankToNull(req.description()));
         c.setFormat(req.format());
-        audit.record(me.userId(), AuditService.COURSE_UPDATED, c.getCode(), "was: " + before);
+        audit.record(me.userId(), AuditService.COURSE_UPDATED, c.displayCode(), "was: " + before);
         return view(c, false, enrollments.countByCourseId(c.getId()));
     }
 
@@ -193,9 +213,10 @@ public class CourseService {
         List<String> keys = new ArrayList<>(files.findByCourseIdOrderByCreatedAt(c.getId()).stream()
                 .map(CourseFile::getStorageKey).toList());
         keys.addAll(submissionFiles.storageKeysByCourse(c.getId()));
+        keys.addAll(leaveFiles.storageKeysByCourse(c.getId()));
         courses.delete(c);
         afterCommit(() -> keys.forEach(storage::deleteQuietly));
-        audit.record(me.userId(), AuditService.COURSE_DELETED, c.getCode(), c.getTitle(), ip);
+        audit.record(me.userId(), AuditService.COURSE_DELETED, c.displayCode(), c.getTitle(), ip);
     }
 
     // ---------------------------------------------------------------- ghi danh
@@ -244,7 +265,7 @@ public class CourseService {
         if (enrollments.deleteOne(c.getId(), u.getId()) == 0) {
             throw AppException.notFound("Enrollment");
         }
-        audit.record(me.userId(), AuditService.STUDENT_UNENROLLED, c.getCode(), u.getUsername());
+        audit.record(me.userId(), AuditService.STUDENT_UNENROLLED, c.displayCode(), u.getUsername());
     }
 
     @Transactional(readOnly = true)
@@ -269,7 +290,7 @@ public class CourseService {
         } while (courses.existsByEnrollKey(key));
         c.setEnrollKey(key);
         // Không ghi mã vào audit: ai đọc được audit cũng không tự vào được khóa học
-        audit.record(me.userId(), AuditService.ENROLL_KEY_CREATED, c.getCode(), null);
+        audit.record(me.userId(), AuditService.ENROLL_KEY_CREATED, c.displayCode(), null);
         return key;
     }
 
@@ -277,7 +298,7 @@ public class CourseService {
     public void disableEnrollKey(String publicId, AuthPrincipal me) {
         Course c = requireManaged(publicId, me);
         c.setEnrollKey(null);
-        audit.record(me.userId(), AuditService.ENROLL_KEY_DISABLED, c.getCode(), null);
+        audit.record(me.userId(), AuditService.ENROLL_KEY_DISABLED, c.displayCode(), null);
     }
 
     // ================================================================ sinh viên
@@ -301,7 +322,7 @@ public class CourseService {
         Course c = courses.findByEnrollKey(key).orElseThrow(() -> new AppException(ErrorCode.INVALID_ENROLL_KEY));
         if (!enrollments.existsByCourseIdAndUserId(c.getId(), me.userId())) {
             enrollments.save(new Enrollment(c.getId(), me.userId(), Enrollment.METHOD_KEY));
-            audit.record(me.userId(), AuditService.COURSE_JOINED, c.getCode(), me.username());
+            audit.record(me.userId(), AuditService.COURSE_JOINED, c.displayCode(), me.username());
         }
         return summary(c, enrollments.countByCourseId(c.getId()));
     }
@@ -331,14 +352,23 @@ public class CourseService {
                         Optional.ofNullable(f.getLessonId()).map(lessonById::get).map(Lesson::getPublicId)
                                 .orElse(null)))
                 .toList();
-        List<AssessmentView> assessmentViews = assessments.findByCourseIdOrderByCreatedAt(c.getId()).stream()
+        List<Assessment> assessmentList = assessments.findByCourseIdOrderByCreatedAt(c.getId());
+        // Số câu: bài trắc nghiệm đếm câu hỏi, bài lập trình đếm câu (đề)
+        Map<Long, Long> questionCounts = new HashMap<>();
+        List<Long> ids = assessmentList.stream().map(Assessment::getId).toList();
+        if (assessmentList.stream().anyMatch(Assessment::isQuiz)) {
+            quizQuestions.countByAssessmentIds(ids).forEach(r -> questionCounts.put((Long) r[0], (Long) r[1]));
+        }
+        if (assessmentList.stream().anyMatch(Assessment::isCode)) {
+            assessments.countCodeProblems(ids).forEach(r -> questionCounts.put((Long) r[0], (Long) r[1]));
+        }
+        List<AssessmentView> assessmentViews = assessmentList.stream()
                 .map(a -> {
                     CourseFile paper = Optional.ofNullable(a.getPaperFileId()).map(fileById::get).orElse(null);
-                    // Sinh viên chỉ thấy đề khi bài đã mở
-                    boolean show = paper != null && (!studentView || a.isOpened(now));
-                    return new AssessmentView(a.getPublicId(), a.getType(), a.getTitle(), a.getDescription(),
-                            show ? paper.getPublicId() : null, show ? paper.getName() : null,
-                            a.getOpensAt(), a.getClosesAt(), a.statusAt(now));
+                    // Sinh viên chỉ thấy đề khi bài đã mở; bài có giám sát thì chỉ trong phòng thi (trang làm bài)
+                    boolean show = paper != null && (!studentView || (a.isOpened(now) && !a.isProctoredAt(now)));
+                    return CourseViews.assessmentView(a, show ? paper : null,
+                            questionCounts.getOrDefault(a.getId(), 0L), now);
                 }).toList();
         return new CourseDetail(view(c, studentView, enrollments.countByCourseId(c.getId())),
                 secs.stream().map(s -> new SectionView(s.getPublicId(), s.getPosition(), s.getTitle())).toList(),
@@ -376,7 +406,7 @@ public class CourseService {
             }
         }
         if (!added.isEmpty()) {
-            audit.record(me.userId(), AuditService.STUDENTS_ENROLLED, c.getCode(), added.size() + ": "
+            audit.record(me.userId(), AuditService.STUDENTS_ENROLLED, c.displayCode(), added.size() + ": "
                     + String.join(", ", added.stream().map(UserPick::username).toList()));
         }
         return new EnrollReport(added, already, notFound, notStudent);
@@ -391,13 +421,13 @@ public class CourseService {
     }
 
     private static CourseSummary summary(Course c, long studentCount) {
-        return new CourseSummary(c.getPublicId(), c.getCode(), c.getTitle(), c.getFormat(), studentCount,
-                teacherName(c), c.getCreatedAt());
+        return new CourseSummary(c.getPublicId(), c.getCode(), c.getGroupName(), c.getTitle(), c.getFormat(),
+                studentCount, teacherName(c), c.getCreatedAt());
     }
 
     private static CourseView view(Course c, boolean studentView, long studentCount) {
-        return new CourseView(c.getPublicId(), c.getCode(), c.getTitle(), c.getDescription(), c.getFormat(),
-                studentView ? null : c.getEnrollKey(), studentCount,
+        return new CourseView(c.getPublicId(), c.getCode(), c.getGroupName(), c.getTitle(), c.getDescription(),
+                c.getFormat(), studentView ? null : c.getEnrollKey(), studentCount,
                 studentView || c.getTeacher() == null ? null : c.getTeacher().getPublicId(), teacherName(c),
                 c.getCreatedAt());
     }

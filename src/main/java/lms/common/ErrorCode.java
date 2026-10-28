@@ -26,6 +26,8 @@ public enum ErrorCode {
     TEACHER_ONLY(HttpStatus.FORBIDDEN, "Only the course teacher can do this"),
     /** Giảng viên được chọn không tồn tại, không phải giảng viên hoặc đã bị khóa. */
     INVALID_TEACHER(HttpStatus.BAD_REQUEST, "Teacher not found or inactive"),
+    /** Tạo/sửa khóa học trùng mã học phần + nhóm của khóa học khác. */
+    COURSE_GROUP_TAKEN(HttpStatus.CONFLICT, "A course with this code and group already exists"),
     /** Đổi mã đăng nhập sang mã đã có người dùng (không phân biệt hoa thường). */
     USERNAME_TAKEN(HttpStatus.CONFLICT, "Username already exists"),
     /** Đặt lại mật khẩu về ngày sinh nhưng tài khoản chưa có ngày sinh. */
@@ -36,6 +38,52 @@ public enum ErrorCode {
     ASSESSMENT_NOT_OPEN(HttpStatus.CONFLICT, "Assessment is not open yet"),
     SUBMISSION_LOCKED(HttpStatus.CONFLICT, "Submission already submitted or time is over"),
     SUBMISSION_NOT_FINAL(HttpStatus.CONFLICT, "Submission is still in progress"),
+    /** Mã QR điểm danh sai, hết hạn (quá 2 chu kỳ 10 giây) hoặc không phải mã của hệ thống. */
+    ATTENDANCE_CODE_INVALID(HttpStatus.BAD_REQUEST, "Attendance code is invalid or expired"),
+    /** Giảng viên đã dừng điểm danh bằng QR của buổi này. */
+    ATTENDANCE_CLOSED(HttpStatus.CONFLICT, "QR check-in is closed for this session"),
+    /** Quét mã điểm danh của khóa học mình không có tên trong danh sách. */
+    NOT_ENROLLED(HttpStatus.FORBIDDEN, "You are not enrolled in this course"),
+    /** Nhập quá số câu cho phép một lần, hoặc ngân hàng câu hỏi đã đầy. */
+    QUESTION_LIMIT(HttpStatus.CONFLICT, "Too many questions"),
+    /** Bài lập trình: lần chạy/nộp trước của sinh viên còn đang chờ chấm. */
+    JUDGE_BUSY(HttpStatus.CONFLICT, "Previous attempt is still being judged"),
+    /** Bài lập trình: đã nộp đủ số lần giảng viên cho phép. */
+    ATTEMPT_LIMIT(HttpStatus.CONFLICT, "No submissions left"),
+    /** Lịch học: buổi mới chung tiết với buổi cùng phòng, cùng giảng viên hoặc cùng khóa học; details = buổi trùng. */
+    SCHEDULE_CONFLICT(HttpStatus.CONFLICT, "Schedule conflicts with existing classes"),
+    /** Tên phòng học đã có trong danh mục. */
+    ROOM_NAME_TAKEN(HttpStatus.CONFLICT, "A room with this name already exists"),
+    /** Phòng đã được xếp lịch nên không xóa được; ngừng dùng phòng thay vì xóa. */
+    ROOM_IN_USE(HttpStatus.CONFLICT, "Room is used by schedules"),
+    /** Phòng đã ngừng dùng: không xếp được lịch mới vào phòng này. */
+    ROOM_INACTIVE(HttpStatus.CONFLICT, "Room is no longer in use"),
+    /** Buổi học đã mở điểm danh: không dời, hủy hay xóa được (xóa buổi điểm danh trước). */
+    MEETING_HAS_ATTENDANCE(HttpStatus.CONFLICT, "Attendance was already taken for this class"),
+    /** Mở điểm danh cho buổi học đã hủy. */
+    MEETING_CANCELLED(HttpStatus.CONFLICT, "This class was cancelled"),
+    /** Mở điểm danh cho buổi học của ngày sau hôm nay. */
+    MEETING_NOT_STARTED(HttpStatus.CONFLICT, "This class has not taken place yet"),
+    /** Đơn xin nghỉ gửi sau hạn (giờ bắt đầu buổi học trừ số giờ giảng viên quy định); details = {deadline}. */
+    LEAVE_DEADLINE_PASSED(HttpStatus.CONFLICT, "Too late to request leave for this class"),
+    /** Sinh viên đã có đơn xin nghỉ cho buổi này. */
+    LEAVE_ALREADY_REQUESTED(HttpStatus.CONFLICT, "Leave already requested for this class"),
+    /** Đơn đã được giảng viên duyệt nên không rút được. */
+    LEAVE_ALREADY_REVIEWED(HttpStatus.CONFLICT, "Leave request was already reviewed"),
+    /** Bài kiểm tra có giám sát: phải vào phòng thi (POST .../proctor/start) trước khi xem đề, làm bài. */
+    PROCTOR_REQUIRED(HttpStatus.FORBIDDEN, "Enter the exam room first"),
+    /** Bài thi bị khóa (đủ số lần vi phạm hoặc giám thị khóa): chờ giám thị mở khóa. */
+    PROCTOR_LOCKED(HttpStatus.FORBIDDEN, "Exam is locked by the proctor"),
+    /** Bài thi đang làm trên máy (phiên đăng nhập) khác: giám thị cho đổi máy mới làm tiếp được ở máy này. */
+    PROCTOR_OTHER_DEVICE(HttpStatus.FORBIDDEN, "Exam is in progress on another device"),
+    /** IP của máy không thuộc mạng phòng thi giảng viên cho phép; details = {ip}. */
+    PROCTOR_NETWORK_DENIED(HttpStatus.FORBIDDEN, "This network is not allowed for the exam"),
+    /** Mã phòng thi sai hoặc đã đổi (mã đổi mỗi phút). */
+    PROCTOR_CODE_INVALID(HttpStatus.BAD_REQUEST, "Exam room code is invalid or expired"),
+    /** Đã kết thúc bài thi (nộp bài / bấm kết thúc): không làm tiếp được. */
+    PROCTOR_FINISHED(HttpStatus.CONFLICT, "Exam already finished"),
+    /** Đang trong giờ thi có giám sát: chỉ mở được trang làm bài; details = {assessmentId, courseId, title}. */
+    PROCTOR_IN_EXAM(HttpStatus.FORBIDDEN, "Only the exam page is available during a proctored exam"),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
 
     private final HttpStatus status;

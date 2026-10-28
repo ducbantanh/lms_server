@@ -22,8 +22,10 @@ import lms.user.User;
 /**
  * Quản lý opaque session lưu trong MySQL.
  *
- * Hết hạn = min(lần hoạt động cuối + idleTimeout, lúc tạo + absoluteTimeout).
- * last_seen_at chỉ cập nhật tối đa 1 lần/phút để không ghi DB ở mọi request.
+ * Hết hạn = min(lần hoạt động cuối + thời gian chờ của vai trò, lúc tạo + absoluteTimeout).
+ * Hoạt động = request API hoặc tín hiệu "activity" client gửi qua WebSocket khi người dùng thao tác.
+ * last_seen_at chỉ cập nhật tối đa 1 lần/10 giây để không ghi DB ở mọi request
+ * (ngắn hơn chu kỳ 15 giây client gửi "activity", để tín hiệu nào tới cũng được ghi).
  */
 @Service
 public class SessionService {
@@ -33,16 +35,21 @@ public class SessionService {
     public static final String REASON_LOCKED = "locked";
     public static final String REASON_DELETED = "deleted";
     public static final String REASON_PASSWORD_CHANGED = "password_changed";
+    /** Hết thời gian chờ vì không hoạt động (thời gian theo vai trò, admin chỉnh được). */
+    public static final String REASON_IDLE = "idle";
+    public static final String REASON_EXPIRED = "expired";
 
     private static final Logger log = LoggerFactory.getLogger(SessionService.class);
-    private static final Duration TOUCH_INTERVAL = Duration.ofMinutes(1);
+    private static final Duration TOUCH_INTERVAL = Duration.ofSeconds(10);
 
     private final SessionRepository repo;
     private final AppProperties.Session cfg;
+    private final IdleTimeoutService idleTimeouts;
 
-    public SessionService(SessionRepository repo, AppProperties props) {
+    public SessionService(SessionRepository repo, AppProperties props, IdleTimeoutService idleTimeouts) {
         this.repo = repo;
         this.cfg = props.session();
+        this.idleTimeouts = idleTimeouts;
     }
 
     /** Kết quả tạo session: token gốc chỉ trả về đúng 1 lần để ghi vào cookie. */
@@ -58,7 +65,7 @@ public class SessionService {
                 RandomTokens.csrfToken(),
                 user,
                 now,
-                now.plus(min(cfg.idleTimeout(), cfg.absoluteTimeout())),
+                expiry(now, now, idleTimeouts.idleTimeout(user.getRole()), cfg.absoluteTimeout()),
                 ip,
                 userAgent);
         repo.save(s);
@@ -73,14 +80,25 @@ public class SessionService {
         }
         Instant now = now();
         return repo.findValid(RandomTokens.sha256Hex(rawToken), now).map(s -> {
-            if (Duration.between(s.getLastSeenAt(), now).compareTo(TOUCH_INTERVAL) > 0) {
-                s.setLastSeenAt(now);
-                Instant idleExpiry = now.plus(cfg.idleTimeout());
-                Instant absoluteExpiry = s.getCreatedAt().plus(cfg.absoluteTimeout());
-                s.setExpiresAt(idleExpiry.isBefore(absoluteExpiry) ? idleExpiry : absoluteExpiry);
-            }
+            extend(s, now);
             return toPrincipal(s);
         });
+    }
+
+    /** Người dùng đang thao tác trên trang (WebSocket "activity"): gia hạn nếu phiên còn hiệu lực. */
+    @Transactional
+    public void touch(long sessionId) {
+        Instant now = now();
+        repo.findValidById(sessionId, now).ifPresent(s -> extend(s, now));
+    }
+
+    private void extend(SessionEntity s, Instant now) {
+        if (Duration.between(s.getLastSeenAt(), now).compareTo(TOUCH_INTERVAL) <= 0) {
+            return;
+        }
+        s.setLastSeenAt(now);
+        s.setExpiresAt(expiry(now, s.getCreatedAt(),
+                idleTimeouts.idleTimeout(s.getUser().getRole()), cfg.absoluteTimeout()));
     }
 
     @Transactional
@@ -105,6 +123,17 @@ public class SessionService {
             return Set.of();
         }
         return new HashSet<>(repo.findValidIds(sessionIds, now()));
+    }
+
+    /** Lý do phiên không còn hiệu lực (WebSocket sweeper): "idle" nếu hết hạn vì không hoạt động. */
+    @Transactional(readOnly = true)
+    public String expiredReason(long sessionId) {
+        Instant now = now();
+        return repo.findById(sessionId)
+                .filter(s -> s.getRevokedAt() == null
+                        && isIdleExpiry(s.getExpiresAt(), s.getCreatedAt(), now, cfg.absoluteTimeout()))
+                .map(s -> REASON_IDLE)
+                .orElse(REASON_EXPIRED);
     }
 
     /** Dọn session cũ mỗi ngày lúc 03:30. */
@@ -135,7 +164,15 @@ public class SessionService {
         return Instant.now().truncatedTo(ChronoUnit.MILLIS);
     }
 
-    private static Duration min(Duration a, Duration b) {
-        return a.compareTo(b) <= 0 ? a : b;
+    /** Hạn của phiên khi lần hoạt động cuối là lastSeen. */
+    static Instant expiry(Instant lastSeen, Instant createdAt, Duration idle, Duration absolute) {
+        Instant idleExpiry = lastSeen.plus(idle);
+        Instant absoluteExpiry = createdAt.plus(absolute);
+        return idleExpiry.isBefore(absoluteExpiry) ? idleExpiry : absoluteExpiry;
+    }
+
+    /** Đã hết hạn và hạn sớm hơn hạn tuyệt đối, tức là hết vì không hoạt động. */
+    static boolean isIdleExpiry(Instant expiresAt, Instant createdAt, Instant now, Duration absolute) {
+        return !expiresAt.isAfter(now) && expiresAt.isBefore(createdAt.plus(absolute));
     }
 }

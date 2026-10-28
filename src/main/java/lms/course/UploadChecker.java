@@ -25,14 +25,21 @@ public class UploadChecker {
     public static final Set<String> MATERIAL = Set.of("pdf", "docx", "pptx");
     /** Bài nộp của sinh viên: thêm ZIP cho mã nguồn. */
     public static final Set<String> SUBMISSION = Set.of("pdf", "docx", "pptx", "zip");
+    /** Minh chứng xin nghỉ (giấy khám bệnh, giấy mời…): ảnh chụp hoặc PDF. */
+    public static final Set<String> EVIDENCE = Set.of("pdf", "jpg", "jpeg", "png");
 
     private static final Map<String, String> TYPES = Map.of(
             "pdf", CourseContentService.PDF,
             "docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            "zip", "application/zip");
+            "zip", "application/zip",
+            "jpg", "image/jpeg",
+            "jpeg", "image/jpeg",
+            "png", "image/png");
     private static final byte[] PDF_MAGIC = "%PDF-".getBytes();
     private static final byte[] ZIP_MAGIC = { 0x50, 0x4b, 0x03, 0x04 };
+    private static final byte[] JPEG_MAGIC = { (byte) 0xff, (byte) 0xd8, (byte) 0xff };
+    private static final byte[] PNG_MAGIC = { (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a };
 
     /** File đã qua kiểm tra: tên gốc, kiểu nội dung theo đuôi và nội dung. */
     public record Checked(String name, String contentType, byte[] data) {
@@ -60,8 +67,7 @@ public class UploadChecker {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-        if (contentType == null
-                || !startsWith(data, CourseContentService.PDF.equals(contentType) ? PDF_MAGIC : ZIP_MAGIC)) {
+        if (contentType == null || !startsWith(data, magicOf(contentType))) {
             throw new AppException(ErrorCode.UNSUPPORTED_FILE_TYPE);
         }
         return new Checked(name, contentType, data);
@@ -74,6 +80,16 @@ public class UploadChecker {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "Missing file name");
         }
         return name.length() > 255 ? name.substring(name.length() - 255) : name;
+    }
+
+    /** DOCX, PPTX là file ZIP. */
+    private static byte[] magicOf(String contentType) {
+        return switch (contentType) {
+            case CourseContentService.PDF -> PDF_MAGIC;
+            case "image/jpeg" -> JPEG_MAGIC;
+            case "image/png" -> PNG_MAGIC;
+            default -> ZIP_MAGIC;
+        };
     }
 
     private static boolean startsWith(byte[] data, byte[] magic) {

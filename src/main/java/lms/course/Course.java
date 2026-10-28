@@ -34,6 +34,10 @@ public class Course {
     @Column(nullable = false, length = 32)
     private String code;
 
+    /** Nhóm của học phần (vd. "01"); null = không chia nhóm. Mã + nhóm là duy nhất. */
+    @Column(name = "group_name", length = 16)
+    private String groupName;
+
     @Column(nullable = false, length = 200)
     private String title;
 
@@ -47,6 +51,10 @@ public class Course {
     /** NULL = tắt tham gia bằng mã. */
     @Column(name = "enroll_key", length = 16)
     private String enrollKey;
+
+    /** Đơn xin nghỉ phải gửi trước giờ bắt đầu buổi học ít nhất bấy nhiêu giờ (giảng viên phụ trách đặt). */
+    @Column(name = "leave_notice_hours", nullable = false)
+    private int leaveNoticeHours = 24;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "teacher_id")
@@ -94,6 +102,22 @@ public class Course {
         this.code = code;
     }
 
+    public String getGroupName() {
+        return groupName;
+    }
+
+    public void setGroupName(String groupName) {
+        this.groupName = groupName;
+    }
+
+    /**
+     * Mã kèm nhóm cho nơi chỉ hiện một chuỗi (thông báo, bài nộp, nhật ký, tên file): "INT1340 · Nhóm 01".
+     * Client dùng cùng định dạng trong courseLabel() (lib/course-utils.ts).
+     */
+    public String displayCode() {
+        return groupName == null ? code : code + " · Nhóm " + groupName;
+    }
+
     public String getTitle() {
         return title;
     }
@@ -124,6 +148,14 @@ public class Course {
 
     public void setEnrollKey(String enrollKey) {
         this.enrollKey = enrollKey;
+    }
+
+    public int getLeaveNoticeHours() {
+        return leaveNoticeHours;
+    }
+
+    public void setLeaveNoticeHours(int leaveNoticeHours) {
+        this.leaveNoticeHours = leaveNoticeHours;
     }
 
     public void setTeacher(User teacher) {

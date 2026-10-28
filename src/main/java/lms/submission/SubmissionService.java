@@ -23,11 +23,14 @@ import lms.course.CourseFile;
 import lms.course.CourseFileRepository;
 import lms.course.CourseRepository;
 import lms.course.CourseService;
+import lms.course.CourseViews;
 import lms.course.CourseViews.AssessmentView;
 import lms.course.EnrollmentRepository;
 import lms.course.FileStorage;
 import lms.course.UploadChecker;
 import lms.course.UploadChecker.Checked;
+import lms.proctor.ProctorService;
+import lms.quiz.QuizQuestionRepository;
 import lms.submission.SubmissionViews.CourseRef;
 import lms.submission.SubmissionViews.GradeView;
 import lms.submission.SubmissionViews.MyResult;
@@ -65,11 +68,15 @@ public class SubmissionService {
     private final UploadChecker uploads;
     private final UserRepository users;
     private final AuditService audit;
+    private final QuizQuestionRepository quizQuestions;
+    private final ProctorService proctor;
 
     public SubmissionService(AssessmentRepository assessments, CourseRepository courses,
             EnrollmentRepository enrollments, CourseFileRepository courseFiles, SubmissionRepository submissions,
             SubmissionFileRepository files, FileStorage storage, UploadChecker uploads, UserRepository users,
-            AuditService audit) {
+            AuditService audit, QuizQuestionRepository quizQuestions, ProctorService proctor) {
+        this.quizQuestions = quizQuestions;
+        this.proctor = proctor;
         this.users = users;
         this.assessments = assessments;
         this.courses = courses;
@@ -82,14 +89,17 @@ public class SubmissionService {
         this.audit = audit;
     }
 
+    /** Bài kiểm tra có giám sát: đề chỉ có khi sinh viên đang ở phòng thi trên máy này (proctor.status active). */
     @Transactional(readOnly = true)
-    public StudentAssessment view(String assessmentId, AuthPrincipal me) {
+    public StudentAssessment view(String assessmentId, AuthPrincipal me, String ip) {
         Target t = requireEnrolled(assessmentId, me);
+        Assessment a = t.assessment();
         Instant now = Instant.now();
-        Submission s = submissions.findByAssessmentIdAndUserId(t.assessment().getId(), me.userId()).orElse(null);
+        Submission s = submissions.findByAssessmentIdAndUserId(a.getId(), me.userId()).orElse(null);
         Course c = t.course();
-        return new StudentAssessment(new CourseRef(c.getPublicId(), c.getCode(), c.getTitle()),
-                assessmentView(t.assessment(), now), submissionView(t.assessment(), s, now), now);
+        return new StudentAssessment(new CourseRef(c.getPublicId(), c.displayCode(), c.getTitle()),
+                assessmentView(a, now, proctor.paperAllowed(a, me)), submissionView(a, s, now), now,
+                proctor.studentState(a, me, ip));
     }
 
     /** Trạng thái và điểm của người gọi ở mọi bài của khóa học đã ghi danh (mọi bài đều có một dòng). */
@@ -112,8 +122,9 @@ public class SubmissionService {
         return list.stream().map(a -> {
             Submission s = byAssessment.get(a.getId());
             int count = s == null ? 0 : fileCounts.getOrDefault(s.getId(), 0L).intValue();
+            // Điểm chưa công bố (công bố sau giờ đóng) thì không gửi
             return new MyResult(a.getPublicId(), statusOf(a, s, count, now), s == null ? null : s.getSubmittedAt(),
-                    s == null ? null : s.getScore());
+                    s == null || !a.isScoreVisible(now) ? null : s.getScore());
         }).toList();
     }
 
@@ -139,7 +150,7 @@ public class SubmissionService {
             throw e;
         }
         // Bằng chứng khi có tranh chấp "em đã tải bài lên rồi"
-        audit.record(me.userId(), AuditService.SUBMISSION_FILE_ADDED, t.course().getCode(),
+        audit.record(me.userId(), AuditService.SUBMISSION_FILE_ADDED, t.course().displayCode(),
                 a.getTitle() + " · " + file.name() + " (" + file.data().length + " B)");
         return submissionView(a, s, now);
     }
@@ -157,7 +168,7 @@ public class SubmissionService {
         files.delete(f);
         s.touch();
         CourseService.afterCommit(() -> storage.deleteQuietly(f.getStorageKey()));
-        audit.record(me.userId(), AuditService.SUBMISSION_FILE_REMOVED, t.course().getCode(),
+        audit.record(me.userId(), AuditService.SUBMISSION_FILE_REMOVED, t.course().displayCode(),
                 a.getTitle() + " · " + f.getName());
         return submissionView(a, s, now);
     }
@@ -175,7 +186,8 @@ public class SubmissionService {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "Nothing to submit");
         }
         s.submit(now);
-        audit.record(me.userId(), AuditService.SUBMISSION_SUBMITTED, t.course().getCode(),
+        proctor.onWorkFinished(a, me.userId(), "submitted");
+        audit.record(me.userId(), AuditService.SUBMISSION_SUBMITTED, t.course().displayCode(),
                 a.getTitle() + " (" + count + " file)", ip);
         return submissionView(a, s, now);
     }
@@ -209,6 +221,10 @@ public class SubmissionService {
     }
 
     private static void requireEditable(Assessment a, Submission s, Instant now) {
+        if (a.isQuiz() || a.isCode()) {
+            // Bài trắc nghiệm / lập trình làm qua /student/assessments/{id}/quiz/**, /code/**, không nộp file
+            throw new AppException(ErrorCode.BAD_REQUEST, a.isQuiz() ? "Quiz assessment" : "Code assessment");
+        }
         if (!a.isOpened(now)) {
             throw new AppException(ErrorCode.ASSESSMENT_NOT_OPEN);
         }
@@ -219,11 +235,16 @@ public class SubmissionService {
 
     /** Như góc nhìn sinh viên ở trang khóa học: đề chỉ có khi bài đã mở. */
     AssessmentView assessmentView(Assessment a, Instant now) {
-        CourseFile paper = a.getPaperFileId() == null || !a.isOpened(now) ? null
+        return assessmentView(a, now, true);
+    }
+
+    /** paperAllowed false: bài có giám sát mà sinh viên chưa ở phòng thi, không gửi đề. */
+    private AssessmentView assessmentView(Assessment a, Instant now, boolean paperAllowed) {
+        CourseFile paper = a.getPaperFileId() == null || !a.isOpened(now) || !paperAllowed ? null
                 : courseFiles.findById(a.getPaperFileId()).orElse(null);
-        return new AssessmentView(a.getPublicId(), a.getType(), a.getTitle(), a.getDescription(),
-                paper == null ? null : paper.getPublicId(), paper == null ? null : paper.getName(),
-                a.getOpensAt(), a.getClosesAt(), a.statusAt(now));
+        return CourseViews.assessmentView(a, paper, a.isQuiz() ? quizQuestions.countByAssessmentId(a.getId())
+                : a.isCode() ? assessments.countCodeProblems(a.getId()) : 0,
+                now);
     }
 
     private SubmissionView submissionView(Assessment a, Submission s, Instant now) {
@@ -232,7 +253,8 @@ public class SubmissionService {
         String grader = s == null || s.getGradedBy() == null ? null
                 : users.findById(s.getGradedBy()).map(User::getFullName).orElse(null);
         return new SubmissionView(status, s == null ? null : s.getSubmittedAt(),
-                SubmissionViews.IN_PROGRESS.equals(status), fileViews(fs), gradeView(s, grader));
+                SubmissionViews.IN_PROGRESS.equals(status), fileViews(fs),
+                a.isScoreVisible(now) ? gradeView(s, grader) : null);
     }
 
     // ---------------------------------------------------------------- dùng chung với GradingService
@@ -246,7 +268,9 @@ public class SubmissionService {
             return SubmissionViews.NOT_STARTED;
         }
         if (a.isClosed(now)) {
-            return fileCount == 0 ? SubmissionViews.MISSED : SubmissionViews.AUTO_SUBMITTED;
+            // Bài trắc nghiệm đã bắt đầu thì các câu đã chọn là bài nộp (QuizSweeper chốt và chấm ngay sau đó)
+            boolean hasWork = fileCount > 0 || (s != null && s.getStartedAt() != null);
+            return hasWork ? SubmissionViews.AUTO_SUBMITTED : SubmissionViews.MISSED;
         }
         return SubmissionViews.IN_PROGRESS;
     }
@@ -258,6 +282,6 @@ public class SubmissionService {
 
     static GradeView gradeView(Submission s, String graderName) {
         return s == null || !s.isGraded() ? null
-                : new GradeView(s.getScore(), s.getFeedback(), s.getGradedAt(), graderName);
+                : new GradeView(s.getScore(), s.getFeedback(), s.getGradedAt(), graderName, s.getAutoScore());
     }
 }

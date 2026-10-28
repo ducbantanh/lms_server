@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -109,6 +110,23 @@ public class NotificationService {
                 where == null ? null : "Trong " + where, null, senderId);
     }
 
+    /** Kết quả duyệt đơn xin nghỉ: chỉ gửi sinh viên viết đơn. */
+    public void leaveReviewed(Course c, long studentId, String title, String body, long senderId) {
+        send(c, Notification.CATEGORY_LEAVE, title, body, null, senderId, List.of(studentId));
+    }
+
+    /** Lịch học thay đổi (admin chọn gửi): tới sinh viên đang ghi danh và giảng viên phụ trách. */
+    public void scheduleChanged(Course c, String title, String body, long senderId) {
+        Set<Long> targets = new HashSet<>(enrolledUserIds(c));
+        if (c.getTeacher() != null) {
+            targets.add(c.getTeacher().getId());
+        }
+        targets.remove(senderId);
+        if (!targets.isEmpty()) {
+            send(c, Notification.CATEGORY_SCHEDULE, title, body, null, senderId, targets);
+        }
+    }
+
     // ================================================================ giảng viên
 
     /** Thông báo tùy chỉnh tới cả lớp hoặc các sinh viên được chọn (phải đang ghi danh). */
@@ -126,7 +144,7 @@ public class NotificationService {
         }
         Notification n = send(c, Notification.CATEGORY_ANNOUNCEMENT, req.title().trim(),
                 CourseService.blankToNull(req.body()), (Assessment) null, me.userId(), targets);
-        audit.record(me.userId(), AuditService.NOTIFICATION_SENT, c.getCode(),
+        audit.record(me.userId(), AuditService.NOTIFICATION_SENT, c.displayCode(),
                 n.getTitle() + " → " + targets.size() + " sinh viên");
         return new SentView(n.getPublicId(), NotificationViews.CATEGORIES.get(n.getCategory()), n.getTitle(),
                 n.getBody(), me.fullName(), n.getCreatedAt(), targets.size(), 0);
@@ -154,7 +172,7 @@ public class NotificationService {
 
     // ================================================================ người nhận
 
-    /** category: exam / lab / practice / content / announcement, null = mọi loại. */
+    /** category: exam / lab / practice / content / announcement / schedule / leave, null = mọi loại. */
     @Transactional(readOnly = true)
     public PageResult<NotificationView> list(AuthPrincipal me, String category, boolean unreadOnly, int page,
             int size) {
@@ -246,7 +264,7 @@ public class NotificationService {
     private static NotificationView view(Notification n, Course c, String assessmentPublicId, String sender,
             boolean read) {
         return new NotificationView(n.getPublicId(), NotificationViews.CATEGORIES.get(n.getCategory()), n.getTitle(),
-                n.getBody(), c == null ? null : new CourseRef(c.getPublicId(), c.getCode(), c.getTitle()),
+                n.getBody(), c == null ? null : new CourseRef(c.getPublicId(), c.displayCode(), c.getTitle()),
                 assessmentPublicId, sender, n.getCreatedAt(), read);
     }
 }
