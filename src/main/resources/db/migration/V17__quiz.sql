@@ -3,11 +3,10 @@
 -- Mỗi sinh viên làm một lần: bấm "Bắt đầu" (submissions.started_at), chọn đáp án (lưu ngay từng câu),
 -- bấm nộp hoặc hết giờ thì server chấm tự động (điểm = số câu đúng / tổng số câu × 10).
 
-ALTER TABLE assessments
-    ADD COLUMN answer_mode        TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER type, -- 0 nộp file, 1 trắc nghiệm
-    ADD COLUMN time_limit_minutes INT UNSIGNED     NULL AFTER closes_at,          -- NULL = làm tới giờ đóng
-    ADD COLUMN shuffle            TINYINT(1)       NOT NULL DEFAULT 0 AFTER time_limit_minutes, -- xáo câu và đáp án theo từng sinh viên
-    ADD COLUMN reveal_mode        TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER shuffle; -- 0 không cho xem đáp án, 1 sau khi nộp, 2 sau giờ đóng
+ALTER TABLE assessments ADD COLUMN answer_mode        TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER type; -- 0 nộp file, 1 trắc nghiệm
+ALTER TABLE assessments ADD COLUMN time_limit_minutes INT UNSIGNED     NULL AFTER closes_at;          -- NULL = làm tới giờ đóng
+ALTER TABLE assessments ADD COLUMN shuffle            TINYINT(1)       NOT NULL DEFAULT 0 AFTER time_limit_minutes; -- xáo câu và đáp án theo từng sinh viên
+ALTER TABLE assessments ADD COLUMN reveal_mode        TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER shuffle; -- 0 không cho xem đáp án, 1 sau khi nộp, 2 sau giờ đóng
 
 CREATE TABLE assessment_questions (
     id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -46,6 +45,5 @@ CREATE TABLE submission_answers (
     CONSTRAINT fk_submission_answers_question FOREIGN KEY (question_id) REFERENCES assessment_questions (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
-ALTER TABLE submissions
-    ADD COLUMN started_at DATETIME(3)  NULL AFTER user_id,     -- bài trắc nghiệm: lúc bấm "Bắt đầu"
-    ADD COLUMN auto_score DECIMAL(4, 2) NULL AFTER score;      -- điểm máy chấm (score là điểm chính thức, giảng viên sửa được)
+ALTER TABLE submissions ADD COLUMN started_at DATETIME(3)  NULL AFTER user_id;     -- bài trắc nghiệm: lúc bấm "Bắt đầu"
+ALTER TABLE submissions ADD COLUMN auto_score DECIMAL(4, 2) NULL AFTER score;      -- điểm máy chấm (score là điểm chính thức, giảng viên sửa được)
