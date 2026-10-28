@@ -1,0 +1,7 @@
+target/
+.git/
+*.log
+hs_err_pid*
+data/
+backups/
+.env
