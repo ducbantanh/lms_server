@@ -2,6 +2,5 @@
 -- NULL = không chia nhóm (khóa học tạo trước V13). Mỗi mã + nhóm chỉ có một khóa học
 -- (UNIQUE của MySQL không coi các dòng NULL là trùng nhau).
 
-ALTER TABLE courses
-    ADD COLUMN group_name VARCHAR(16) NULL AFTER code,
-    ADD UNIQUE KEY uk_courses_code_group (code, group_name);
+ALTER TABLE courses ADD COLUMN group_name VARCHAR(16) NULL AFTER code;
+ALTER TABLE courses ADD UNIQUE KEY uk_courses_code_group (code, group_name);

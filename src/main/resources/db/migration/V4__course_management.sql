@@ -8,11 +8,10 @@ INSERT INTO permissions (code, description) VALUES
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code = 'courses.manage' WHERE r.id IN (0, 1);
 
-ALTER TABLE courses
-    ADD COLUMN description VARCHAR(2000)    NULL AFTER title,
-    ADD COLUMN format      TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER description, -- 0 mục tự đặt tên, 1 theo tuần, 2 chỉ danh sách file
-    ADD COLUMN enroll_key  VARCHAR(16)      NULL AFTER format,                    -- NULL = tắt tham gia bằng mã
-    ADD UNIQUE KEY uk_courses_enroll_key (enroll_key);
+ALTER TABLE courses ADD COLUMN description VARCHAR(2000)    NULL AFTER title;
+ALTER TABLE courses ADD COLUMN format      TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER description; -- 0 mục tự đặt tên, 1 theo tuần, 2 chỉ danh sách file
+ALTER TABLE courses ADD COLUMN enroll_key  VARCHAR(16)      NULL AFTER format;                    -- NULL = tắt tham gia bằng mã
+ALTER TABLE courses ADD UNIQUE KEY uk_courses_enroll_key (enroll_key);
 
 -- 0 dán MSSV, 1 chọn từ danh sách, 2 sinh viên tự nhập mã tham gia
 ALTER TABLE enrollments

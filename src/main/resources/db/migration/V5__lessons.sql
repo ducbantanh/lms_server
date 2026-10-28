@@ -21,7 +21,6 @@ CREATE TABLE lessons (
 
 -- File đính kèm bài học; section_id của file luôn bằng section_id của bài để khi xóa bài
 -- (lesson_id → NULL) file vẫn nằm đúng mục.
-ALTER TABLE course_files
-    ADD COLUMN lesson_id BIGINT UNSIGNED NULL AFTER section_id,
-    ADD KEY idx_files_lesson (lesson_id),
-    ADD CONSTRAINT fk_files_lesson FOREIGN KEY (lesson_id) REFERENCES lessons (id) ON DELETE SET NULL;
+ALTER TABLE course_files ADD COLUMN lesson_id BIGINT UNSIGNED NULL AFTER section_id;
+ALTER TABLE course_files ADD KEY idx_files_lesson (lesson_id);
+ALTER TABLE course_files ADD CONSTRAINT fk_files_lesson FOREIGN KEY (lesson_id) REFERENCES lessons (id) ON DELETE SET NULL;

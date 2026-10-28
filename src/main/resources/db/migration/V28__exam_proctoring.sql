@@ -2,13 +2,12 @@
 -- sinh viên phải vào "phòng thi" (phiên thi gắn với phiên đăng nhập và máy đang dùng) mới xem được đề và làm bài;
 -- trình duyệt báo rời trang, thoát toàn màn hình, dán từ ngoài vào; đủ số lần vi phạm thì bài bị khóa chờ giám thị.
 
-ALTER TABLE assessments
-    ADD COLUMN proctored              TINYINT(1)        NOT NULL DEFAULT 0 AFTER score_release,
-    ADD COLUMN proctor_networks       VARCHAR(500)      NULL AFTER proctored,          -- IP / dải CIDR được vào thi, NULL = mọi mạng
-    ADD COLUMN proctor_access_code    TINYINT(1)        NOT NULL DEFAULT 0 AFTER proctor_networks, -- phải nhập mã phòng thi (đổi mỗi phút)
-    ADD COLUMN proctor_fullscreen     TINYINT(1)        NOT NULL DEFAULT 1 AFTER proctor_access_code,
-    ADD COLUMN proctor_max_violations SMALLINT UNSIGNED NULL AFTER proctor_fullscreen, -- đủ số lần thì khóa bài, NULL = chỉ ghi lại
-    ADD COLUMN proctor_secret         CHAR(43)          NULL AFTER proctor_max_violations; -- khóa HMAC của mã phòng thi
+ALTER TABLE assessments ADD COLUMN proctored              TINYINT(1)        NOT NULL DEFAULT 0 AFTER score_release;
+ALTER TABLE assessments ADD COLUMN proctor_networks       VARCHAR(500)      NULL AFTER proctored;          -- IP / dải CIDR được vào thi, NULL = mọi mạng
+ALTER TABLE assessments ADD COLUMN proctor_access_code    TINYINT(1)        NOT NULL DEFAULT 0 AFTER proctor_networks; -- phải nhập mã phòng thi (đổi mỗi phút)
+ALTER TABLE assessments ADD COLUMN proctor_fullscreen     TINYINT(1)        NOT NULL DEFAULT 1 AFTER proctor_access_code;
+ALTER TABLE assessments ADD COLUMN proctor_max_violations SMALLINT UNSIGNED NULL AFTER proctor_fullscreen; -- đủ số lần thì khóa bài, NULL = chỉ ghi lại
+ALTER TABLE assessments ADD COLUMN proctor_secret         CHAR(43)          NULL AFTER proctor_max_violations; -- khóa HMAC của mã phòng thi
 
 -- Phiên thi: một dòng cho mỗi sinh viên ở mỗi bài, tạo khi sinh viên vào phòng thi.
 CREATE TABLE proctor_sessions (
