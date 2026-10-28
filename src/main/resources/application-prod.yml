@@ -1,6 +1,6 @@
 # Profile prod: chạy sau reverse proxy (Nginx/Caddy) có HTTPS.
 server:
-  address: ${APP_HOST:127.0.0.1}
+  address: ${APP_HOST:0.0.0.0}
   forward-headers-strategy: ${APP_FORWARD_HEADERS:native}
 
 app:
