@@ -36,7 +36,7 @@ class LeaveRulesTest {
 
     private static UploadChecker checker() {
         AppProperties props = new AppProperties(null, null, null, null, null,
-                new AppProperties.Storage("data/files", 1024), null, null);
+                new AppProperties.Storage("data/files", 1024), null, null, null, null);
         return new UploadChecker(props);
     }
 

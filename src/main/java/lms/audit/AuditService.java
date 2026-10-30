@@ -24,6 +24,8 @@ public class AuditService {
     public static final String LOGIN_FAILED = "auth.login_failed";
     public static final String LOGOUT = "auth.logout";
     public static final String PASSWORD_CHANGED = "auth.password_changed";
+    public static final String PASSWORD_RESET_REQUESTED = "auth.password_reset_requested";
+    public static final String PASSWORD_RESET_COMPLETED = "auth.password_reset_completed";
     public static final String USER_LOCKED = "user.locked";
     public static final String USER_UNLOCKED = "user.unlocked";
     public static final String USER_DELETED = "user.deleted";

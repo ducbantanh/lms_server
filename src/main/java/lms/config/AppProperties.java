@@ -18,7 +18,9 @@ public record AppProperties(
         @DefaultValue Bootstrap bootstrap,
         @DefaultValue Storage storage,
         @DefaultValue Judge judge,
-        @DefaultValue Schedule schedule) {
+        @DefaultValue Schedule schedule,
+        @DefaultValue Mail mail,
+        @DefaultValue PasswordReset passwordReset) {
 
     public record Session(
             @DefaultValue("SID") String cookieName,
@@ -82,6 +84,24 @@ public record AppProperties(
     public record Schedule(
             @DefaultValue("7") int firstPeriodHour,
             @DefaultValue("14") int periodsPerDay) {
+    }
+
+    /** SMTP gửi mã OTP khôi phục mật khẩu; host trống = chưa bật gửi email. */
+    public record Mail(
+            String host,
+            @DefaultValue("587") int port,
+            String username,
+            String password,
+            String from,
+            @DefaultValue("true") boolean startTls,
+            @DefaultValue("false") boolean ssl) {
+    }
+
+    /** Chính sách OTP: thời hạn ngắn, giới hạn gửi lại và số lần nhập sai. */
+    public record PasswordReset(
+            @DefaultValue("10m") Duration otpTtl,
+            @DefaultValue("60s") Duration resendCooldown,
+            @DefaultValue("5") int maxAttempts) {
     }
 
     public record Bootstrap(

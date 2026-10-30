@@ -3,6 +3,7 @@ package lms.auth;
 import java.util.Set;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /** DTO cho các endpoint /api/v1/auth. */
@@ -18,6 +19,16 @@ public final class AuthDtos {
 
     public record ChangePasswordRequest(
             @NotBlank @Size(max = 128) String currentPassword,
+            @NotBlank @Size(max = 128) String newPassword) {
+    }
+
+    public record PasswordResetCodeRequest(
+            @NotBlank @Size(max = 32) String username) {
+    }
+
+    public record PasswordResetRequest(
+            @NotBlank @Size(max = 32) String username,
+            @NotBlank @Pattern(regexp = "\\d{6}") String code,
             @NotBlank @Size(max = 128) String newPassword) {
     }
 

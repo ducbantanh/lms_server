@@ -5,6 +5,7 @@ Server cho hệ thống LMS chạy trong LAN, giai đoạn 1. Kiến trúc là *
 Server đã có sẵn:
 
 - Login với role dạng số, **opaque session** lưu trong MySQL, cookie `HttpOnly`, CSRF token.
+- Quên mật khẩu bằng OTP 6 số gửi qua SMTP tới email trong hồ sơ; OTP lưu dạng BCrypt, hết hạn sau 10 phút.
 - Phân quyền theo permission (`@RequirePermission`), deny by default.
 - WebSocket `/ws`: theo dõi presence realtime, ép logout tức thì.
 - Admin quản lý user: tìm kiếm, khóa/mở khóa, xóa, ép logout, import sinh viên (text hoặc `.txt`).
@@ -39,6 +40,20 @@ Khóa học demo do `lms.course.DemoCourseInitializer` tạo một lần khi DB 
 
 Ở profile prod, nếu `APP_ADMIN_PASSWORD` để trống, server tự sinh mật khẩu admin ngẫu nhiên và in ra log **một lần duy nhất**.
 
+Để gửi OTP quên mật khẩu, cấu hình SMTP trong `.env` (xem đầy đủ ở `.env.example`):
+
+```properties
+APP_MAIL_HOST=smtp.example.com
+APP_MAIL_PORT=587
+APP_MAIL_USERNAME=no-reply@example.com
+APP_MAIL_PASSWORD=app-password
+APP_MAIL_FROM=no-reply@example.com
+APP_MAIL_STARTTLS=true
+```
+
+Email trong hồ sơ người dùng phải có trước khi họ quên mật khẩu. Nếu chưa cấu hình SMTP, server vẫn khởi động
+bình thường nhưng endpoint gửi OTP trả `EMAIL_UNAVAILABLE`.
+
 Chạy test: `mvn test`
 
 ## 2. Cấu trúc source và người phụ trách
@@ -50,6 +65,7 @@ src/main/java/lms/
 ├── config/            P1  AppProperties, WebMvcConfig, PasswordConfig, seed admin, DevConsoleGuard
 ├── common/            P1  ApiResponse, ErrorCode, AppException, GlobalExceptionHandler, RandomTokens
 ├── auth/              P2  login/logout/me/change-password, AuthInterceptor, Role, PermissionService
+│   ├── reset/             OTP quên mật khẩu, SMTP, giới hạn gửi lại/lần thử
 │   └── session/       P2  SessionEntity, SessionService (opaque token), SessionCookies
 ├── realtime/          P3  WebSocketConfig, handshake auth, RealtimeHub (presence), sweeper; RealtimeRelay gửi sự kiện thẳng hoặc qua realtime_outbox khi máy chấm chạy process riêng
 ├── user/              P4  User, AdminUserController, UserAdminService
@@ -121,6 +137,8 @@ Frontend hiển thị thông báo dựa vào `error.code`. Không hiển thị `
 | POST | `/auth/logout` | login | Thu hồi session, đóng socket |
 | GET | `/auth/me` | login | `{user, csrfToken}` (frontend gọi khi load trang) |
 | POST | `/auth/change-password` | login | `{currentPassword, newPassword}`; thu hồi các session khác |
+| POST | `/auth/forgot-password/request` | public | `{username}`; gửi OTP tới email trong hồ sơ nếu tài khoản hợp lệ, phản hồi không tiết lộ tài khoản/email có tồn tại hay không |
+| POST | `/auth/forgot-password/reset` | public | `{username, code, newPassword}`; OTP đúng thì đổi mật khẩu và thu hồi mọi session cũ |
 | GET | `/admin/users?q=&role=&status=&page=&size=` | `users.manage` | Danh sách có phân trang |
 | POST | `/admin/users/{id}/lock` | `users.manage` | Khóa tài khoản + đá ra ngay |
 | POST | `/admin/users/{id}/unlock` | `users.manage` | Mở khóa |

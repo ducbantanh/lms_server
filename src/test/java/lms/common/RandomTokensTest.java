@@ -3,6 +3,7 @@ package lms.common;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -27,5 +28,13 @@ class RandomTokensTest {
         assertTrue(RandomTokens.constantTimeEquals("a", "a"));
         assertFalse(RandomTokens.constantTimeEquals("a", "b"));
         assertFalse(RandomTokens.constantTimeEquals(null, "a"));
+    }
+
+    @Test
+    void numericCodeHasRequestedDigits() {
+        String code = RandomTokens.numericCode(6);
+        assertEquals(6, code.length());
+        assertTrue(code.matches("\\d{6}"));
+        assertThrows(IllegalArgumentException.class, () -> RandomTokens.numericCode(0));
     }
 }

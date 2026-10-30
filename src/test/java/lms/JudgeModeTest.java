@@ -24,7 +24,7 @@ class JudgeModeTest {
     private static AppProperties withMode(String mode) {
         AppProperties.Judge judge = new AppProperties.Judge(mode, "local", 2, "data/judge", "docker", "lms-judge:1",
                 "gcc", "g++", "javac", "java", null);
-        return new AppProperties(null, null, null, null, null, null, judge, null);
+        return new AppProperties(null, null, null, null, null, null, judge, null, null, null);
     }
 
     @Test

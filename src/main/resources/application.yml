@@ -96,6 +96,19 @@ app:
     workers: ${APP_JUDGE_WORKERS:2}
     work-dir: ${APP_JUDGE_WORK_DIR:data/judge}
     docker-image: ${APP_JUDGE_IMAGE:lms-judge:1}
+  mail:
+    # SMTP gửi OTP khôi phục mật khẩu. Host trống: server vẫn chạy, API gửi OTP báo chưa cấu hình email.
+    host: ${APP_MAIL_HOST:}
+    port: ${APP_MAIL_PORT:587}
+    username: ${APP_MAIL_USERNAME:}
+    password: ${APP_MAIL_PASSWORD:}
+    from: ${APP_MAIL_FROM:${APP_MAIL_USERNAME:}}
+    start-tls: ${APP_MAIL_STARTTLS:true}
+    ssl: ${APP_MAIL_SSL:false}
+  password-reset:
+    otp-ttl: ${APP_PASSWORD_RESET_OTP_TTL:10m}
+    resend-cooldown: ${APP_PASSWORD_RESET_RESEND_COOLDOWN:60s}
+    max-attempts: ${APP_PASSWORD_RESET_MAX_ATTEMPTS:5}
   bootstrap:
     admin-username: ${APP_ADMIN_USERNAME:admin}
     # Để trống -> server sinh mật khẩu ngẫu nhiên và in ra log MỘT lần khi tạo admin

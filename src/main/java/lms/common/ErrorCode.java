@@ -11,6 +11,8 @@ public enum ErrorCode {
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Invalid username or password"),
     ACCOUNT_DISABLED(HttpStatus.FORBIDDEN, "Account is disabled"),
     TOO_MANY_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "Too many attempts, try again later"),
+    PASSWORD_RESET_CODE_INVALID(HttpStatus.BAD_REQUEST, "Password reset code is invalid or expired"),
+    EMAIL_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "Email service is not configured or unavailable"),
     PASSWORD_CHANGE_REQUIRED(HttpStatus.FORBIDDEN, "Password change required"),
     FORBIDDEN(HttpStatus.FORBIDDEN, "Permission denied"),
     CSRF_INVALID(HttpStatus.FORBIDDEN, "Invalid CSRF token"),
