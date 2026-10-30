@@ -9,6 +9,8 @@ WORKDIR /app/client
 ARG CLIENT_REPO=https://github.com/ducbantanh/lms_client.git
 ARG CLIENT_BRANCH=main
 
+ARG CACHEBUST=1
+
 RUN apk add --no-cache git
 RUN git clone --depth 1 -b ${CLIENT_BRANCH} ${CLIENT_REPO} .
 RUN npm ci || npm install
