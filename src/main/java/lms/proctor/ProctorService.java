@@ -407,7 +407,7 @@ public class ProctorService {
                         .collect(Collectors.toMap(ProctorEvent::getSessionId, Function.identity()));
         Map<Long, Submission> work = submissions.findByAssessmentId(a.getId()).stream()
                 .collect(Collectors.toMap(Submission::getUserId, Function.identity()));
-        Map<Long, Long> fileCounts = a.isQuiz() || a.isCode() || work.isEmpty() ? Map.of()
+        Map<Long, Long> fileCounts = !a.usesFiles() || work.isEmpty() ? Map.of()
                 : submissionFiles.countBySubmissionIds(work.values().stream().map(Submission::getId).toList())
                         .stream().collect(Collectors.toMap(r -> (Long) r[0], r -> (Long) r[1]));
         Map<Long, String> actors = actorNames(latest.values());
@@ -707,7 +707,7 @@ public class ProctorService {
 
     private BoardRow row(Assessment a, User u, ProctorSession s, Instant now) {
         Submission sub = submissions.findByAssessmentIdAndUserId(a.getId(), u.getId()).orElse(null);
-        int files = sub == null || a.isQuiz() || a.isCode() ? 0 : (int) submissionFiles.countBySubmissionId(sub.getId());
+        int files = sub == null || !a.usesFiles() ? 0 : (int) submissionFiles.countBySubmissionId(sub.getId());
         ProctorEvent last = s == null ? null : events.findLatest(List.of(s.getId())).stream().findFirst().orElse(null);
         return row(a, u, s, sub, files, last, actorNames(last == null ? List.of() : List.of(last)), networks(a), now);
     }

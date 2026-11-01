@@ -36,9 +36,11 @@ public final class SubmissionViews {
     /**
      * Điểm thang 10 và nhận xét; gradedBy là họ tên người chấm (null nếu tài khoản đã bị xóa, hoặc máy chấm).
      * autoScore: điểm máy chấm của bài trắc nghiệm (null với bài nộp file); score khác autoScore = giảng viên đã sửa.
+     * Bài tổng hợp: autoScore là điểm phần trắc nghiệm + lập trình, manualScore là điểm phần nộp file giảng viên chấm
+     * (null với bài khác), score = autoScore + manualScore.
      */
     public record GradeView(BigDecimal score, String feedback, Instant gradedAt, String gradedBy,
-            BigDecimal autoScore) {
+            BigDecimal autoScore, BigDecimal manualScore) {
     }
 
     /** editable = còn thêm/xóa file và bấm nộp được; grade null = chưa chấm. */
@@ -52,9 +54,13 @@ public final class SubmissionViews {
 
     // ---------------------------------------------------------------- giảng viên
 
-    /** Một dòng trong danh sách bài nộp: mọi sinh viên đã ghi danh, kể cả chưa nộp. */
+    /**
+     * Một dòng trong danh sách bài nộp: mọi sinh viên đã ghi danh, kể cả chưa nộp. autoScore: điểm máy chấm (bài trắc
+     * nghiệm, bài tổng hợp) kể cả khi chưa có điểm chính thức (bài tổng hợp chờ chấm phần nộp file); null nếu không có.
+     */
     public record SubmissionRow(String studentId, String username, String fullName, String status,
-            Instant submittedAt, Instant updatedAt, List<SubmissionFileView> files, GradeView grade) {
+            Instant submittedAt, Instant updatedAt, List<SubmissionFileView> files, GradeView grade,
+            BigDecimal autoScore) {
     }
 
     /** submitted gồm cả nộp khi hết giờ; average chỉ tính bài đã chấm (null nếu chưa chấm bài nào). */

@@ -27,6 +27,7 @@ import lms.course.CourseService;
 import lms.course.CourseViews;
 import lms.course.CourseViews.AssessmentView;
 import lms.course.EnrollmentRepository;
+import lms.mixed.MixedLifecycle;
 import lms.quiz.QuizQuestionRepository;
 import lms.submission.SubmissionViews.AssessmentSubmissions;
 import lms.submission.SubmissionViews.CourseRef;
@@ -58,11 +59,13 @@ public class GradingService {
     private final UserRepository users;
     private final AuditService audit;
     private final QuizQuestionRepository quizQuestions;
+    private final MixedLifecycle mixed;
 
     public GradingService(CourseService courses, AssessmentRepository assessments, CourseFileRepository courseFiles,
             EnrollmentRepository enrollments, SubmissionRepository submissions, SubmissionFileRepository files,
-            UserRepository users, AuditService audit, QuizQuestionRepository quizQuestions) {
+            UserRepository users, AuditService audit, QuizQuestionRepository quizQuestions, MixedLifecycle mixed) {
         this.quizQuestions = quizQuestions;
+        this.mixed = mixed;
         this.courses = courses;
         this.assessments = assessments;
         this.courseFiles = courseFiles;
@@ -104,11 +107,22 @@ public class GradingService {
             // Bài lập trình không chấm điểm: kết quả là số test đúng của từng câu (lms.code)
             throw new AppException(ErrorCode.BAD_REQUEST, "Code assessment has no score");
         }
+        if (a.isMixed() && !a.usesFiles()) {
+            // Bài tổng hợp chỉ có phần trắc nghiệm, lập trình: điểm hoàn toàn do máy chấm
+            throw new AppException(ErrorCode.BAD_REQUEST, "Mixed assessment without file part has no manual score");
+        }
+        if (a.isMixed() && req.score() != null && req.score().compareTo(a.getFileWeight()) > 0) {
+            throw new AppException(ErrorCode.VALIDATION_FAILED, "File part score exceeds its weight");
+        }
         User student = users.findByPublicId(studentId)
                 .filter(u -> enrollments.existsByCourseIdAndUserId(c.getId(), u.getId()))
                 .orElseThrow(() -> AppException.notFound("Student"));
         Instant now = Instant.now();
         Submission s = submissions.findByAssessmentIdAndUserId(a.getId(), student.getId()).orElse(null);
+        if (s != null && a.isMixed()) {
+            // Hết giờ mà QuizSweeper chưa chốt: chốt và chấm phần tự động trước
+            mixed.finalizeIfDue(a, s, now);
+        }
         int fileCount = s == null ? 0 : (int) files.countBySubmissionId(s.getId());
         if (!GRADABLE.contains(SubmissionService.statusOf(a, s, fileCount, now))) {
             throw new AppException(ErrorCode.SUBMISSION_NOT_FINAL);
@@ -122,8 +136,13 @@ public class GradingService {
             if (s == null) {
                 s = submissions.save(new Submission(a.getId(), student.getId()));
             }
-            s.grade(req.score().setScale(2, RoundingMode.UNNECESSARY), CourseService.blankToNull(req.feedback()),
-                    me.userId(), now);
+            BigDecimal value = req.score().setScale(2, RoundingMode.UNNECESSARY);
+            if (a.isMixed()) {
+                // Điểm nhập là điểm phần nộp file; điểm bài = điểm máy chấm + điểm phần này
+                s.gradeManualPart(value, CourseService.blankToNull(req.feedback()), me.userId(), now);
+            } else {
+                s.grade(value, CourseService.blankToNull(req.feedback()), me.userId(), now);
+            }
         }
         submissions.flush();
         audit.record(me.userId(), AuditService.SUBMISSION_GRADED, c.displayCode(),
@@ -148,7 +167,8 @@ public class GradingService {
                 s == null || fs.isEmpty() ? null : s.getUpdatedAt(), SubmissionService.fileViews(fs),
                 // Map.of() không cho tra khóa null: bài chưa chấm thì gradedBy null
                 SubmissionService.gradeView(s, s == null || s.getGradedBy() == null ? null
-                        : graders.get(s.getGradedBy())));
+                        : graders.get(s.getGradedBy())),
+                s == null ? null : s.getAutoScore());
     }
 
     private static SubmissionSummary summary(List<SubmissionRow> rows) {
@@ -172,7 +192,7 @@ public class GradingService {
     /** Giảng viên luôn thấy đề, kể cả trước giờ mở. */
     private AssessmentView teacherView(Assessment a, Instant now) {
         CourseFile paper = a.getPaperFileId() == null ? null : courseFiles.findById(a.getPaperFileId()).orElse(null);
-        return CourseViews.assessmentView(a, paper, a.isQuiz() ? quizQuestions.countByAssessmentId(a.getId())
+        return CourseViews.assessmentView(a, paper, a.usesQuiz() ? quizQuestions.countByAssessmentId(a.getId())
                 : a.isCode() ? assessments.countCodeProblems(a.getId()) : 0,
                 now);
     }

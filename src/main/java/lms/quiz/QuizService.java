@@ -28,6 +28,8 @@ import lms.course.CourseService;
 import lms.course.CourseViews;
 import lms.course.CourseViews.AssessmentView;
 import lms.course.EnrollmentRepository;
+import lms.mixed.MixedGrader;
+import lms.mixed.MixedLifecycle;
 import lms.notification.NotificationService;
 import lms.proctor.ProctorService;
 import lms.question.BankQuestion;
@@ -69,11 +71,13 @@ public class QuizService {
     private final NotificationService notifications;
     private final AuditService audit;
     private final ProctorService proctor;
+    private final MixedLifecycle mixed;
 
     public QuizService(AssessmentRepository assessments, CourseRepository courses, CourseService courseService,
             EnrollmentRepository enrollments, SubmissionRepository submissions, UserRepository users,
             QuizQuestionRepository questions, QuizAnswerRepository answers, BankQuestionRepository bankQuestions,
-            NotificationService notifications, AuditService audit, ProctorService proctor) {
+            NotificationService notifications, AuditService audit, ProctorService proctor, MixedLifecycle mixed) {
+        this.mixed = mixed;
         this.assessments = assessments;
         this.courses = courses;
         this.courseService = courseService;
@@ -98,24 +102,40 @@ public class QuizService {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "closesAt must be after opensAt");
         }
         CourseContentService.requireScoreRelease(req.scoreRelease(), req.closesAt());
-        List<String> ids = req.questionIds().stream().distinct().toList();
-        Map<String, BankQuestion> found = bankQuestions.findOwnedByPublicIds(ids, me.userId()).stream()
+        Map<String, BankQuestion> found = findOwned(req.questionIds(), me.userId());
+        Assessment a = assessments.save(Assessment.quiz(c.getId(), req.type(), req.title().strip(),
+                CourseService.blankToNull(req.description()), req.opensAt(), req.closesAt(),
+                req.timeLimitMinutes(), req.shuffle(), req.revealMode(), req.scoreRelease()));
+        int count = copyQuestions(a, req.questionIds(), found);
+        notifications.assessmentCreated(c, a, true, me.userId());
+        audit.record(me.userId(), AuditService.ASSESSMENT_CREATED, c.displayCode(),
+                a.getTitle() + " (trắc nghiệm " + count + " câu)");
+        return CourseViews.assessmentView(a, null, count, Instant.now());
+    }
+
+    /**
+     * Câu hỏi trong ngân hàng của ownerId theo public id (bỏ trùng); thiếu câu nào thì NOT_FOUND. Gọi trước khi lưu
+     * bài để không tạo bài khi danh sách câu sai.
+     */
+    public Map<String, BankQuestion> findOwned(List<String> questionIds, long ownerId) {
+        List<String> ids = questionIds.stream().distinct().toList();
+        Map<String, BankQuestion> found = bankQuestions.findOwnedByPublicIds(ids, ownerId).stream()
                 .collect(Collectors.toMap(BankQuestion::getPublicId, Function.identity()));
         if (found.size() != ids.size()) {
             throw AppException.notFound("Question");
         }
-        Assessment a = assessments.save(Assessment.quiz(c.getId(), req.type(), req.title().strip(),
-                CourseService.blankToNull(req.description()), req.opensAt(), req.closesAt(),
-                req.timeLimitMinutes(), req.shuffle(), req.revealMode(), req.scoreRelease()));
+        return found;
+    }
+
+    /** Chép câu hỏi (theo thứ tự questionIds, bỏ trùng; found từ findOwned) sang bài đã lưu; trả về số câu. */
+    public int copyQuestions(Assessment a, List<String> questionIds, Map<String, BankQuestion> found) {
+        List<String> ids = questionIds.stream().distinct().toList();
         questions.saveAll(IntStream.range(0, ids.size()).mapToObj(i -> {
             BankQuestion b = found.get(ids.get(i));
             return new QuizQuestion(a.getId(), i, b.getBody(), b.isMultiple(), b.getExplanation(), b.getId(),
                     b.getOptions().stream().map(o -> new QuizOption(o.getBody(), o.isCorrect())).toList());
         }).toList());
-        notifications.assessmentCreated(c, a, true, me.userId());
-        audit.record(me.userId(), AuditService.ASSESSMENT_CREATED, c.displayCode(),
-                a.getTitle() + " (trắc nghiệm " + ids.size() + " câu)");
-        return CourseViews.assessmentView(a, null, ids.size(), Instant.now());
+        return ids.size();
     }
 
     /** Đề của bài (thứ tự gốc, kèm đáp án) và tỷ lệ đúng từng câu trên các bài đã chốt; admin xem được. */
@@ -167,7 +187,7 @@ public class QuizService {
         finalizeIfDue(a, s, Instant.now());
         Map<Long, Set<Integer>> chosen = chosenBy(s);
         return new StudentReview(u.getPublicId(), u.getUsername(), u.getFullName(), s.getStartedAt(),
-                s.getSubmittedAt(), s.isSubmitted() ? result(s, qs, chosen) : null,
+                s.getSubmittedAt(), s.isSubmitted() ? result(a, s, qs, chosen) : null,
                 qs.stream().map(q -> view(q, chosen.getOrDefault(q.getId(), Set.of()), true, null)).toList());
     }
 
@@ -189,6 +209,7 @@ public class QuizService {
     public QuizState start(String assessmentId, AuthPrincipal me) {
         Target t = requireEnrolledQuiz(assessmentId, me);
         Assessment a = t.assessment();
+        requireQuizOnly(a);
         Instant now = nowMillis();
         if (!a.isOpened(now)) {
             throw new AppException(ErrorCode.ASSESSMENT_NOT_OPEN);
@@ -242,6 +263,7 @@ public class QuizService {
     public QuizState submit(String assessmentId, AuthPrincipal me, String ip) {
         Target t = requireEnrolledQuiz(assessmentId, me);
         Assessment a = t.assessment();
+        requireQuizOnly(a);
         Instant now = Instant.now();
         Submission s = requireStarted(a, me);
         finalizeIfDue(a, s, now);
@@ -283,7 +305,7 @@ public class QuizService {
     }
 
     private Target requireEnrolledQuiz(String assessmentId, AuthPrincipal me) {
-        Assessment a = assessments.findByPublicId(assessmentId).filter(Assessment::isQuiz)
+        Assessment a = assessments.findByPublicId(assessmentId).filter(Assessment::usesQuiz)
                 .filter(x -> enrollments.existsByCourseIdAndUserId(x.getCourseId(), me.userId()))
                 .orElseThrow(() -> AppException.notFound("Assessment"));
         Course c = courses.findById(a.getCourseId()).orElseThrow(() -> AppException.notFound("Assessment"));
@@ -292,8 +314,15 @@ public class QuizService {
 
     private Assessment requireManagedQuiz(String courseId, String assessmentId, AuthPrincipal me) {
         Course c = courseService.requireManaged(courseId, me);
-        return assessments.findByPublicIdAndCourseId(assessmentId, c.getId()).filter(Assessment::isQuiz)
+        return assessments.findByPublicIdAndCourseId(assessmentId, c.getId()).filter(Assessment::usesQuiz)
                 .orElseThrow(() -> AppException.notFound("Assessment"));
+    }
+
+    /** Bài tổng hợp bắt đầu / nộp chung cả bài qua /student/assessments/{id}/mixed (lms.mixed). */
+    private static void requireQuizOnly(Assessment a) {
+        if (a.isMixed()) {
+            throw new AppException(ErrorCode.BAD_REQUEST, "Mixed assessment: start and submit the whole assessment");
+        }
     }
 
     private Submission requireStarted(Assessment a, AuthPrincipal me) {
@@ -304,6 +333,9 @@ public class QuizService {
 
     /** Đã bắt đầu, chưa chốt mà quá hạn thì chốt với giờ nộp = hạn và chấm; true nếu vừa chốt. */
     private boolean finalizeIfDue(Assessment a, Submission s, Instant now) {
+        if (a.isMixed()) {
+            return mixed.finalizeIfDue(a, s, now);
+        }
         if (s.getStartedAt() == null || s.isSubmitted()) {
             return false;
         }
@@ -345,7 +377,7 @@ public class QuizService {
         boolean revealed = scoreVisible && revealed(a, now);
         return new QuizState(QuizViews.FINISHED, qs.size(), a.getTimeLimitMinutes(), s.getStartedAt(), deadline,
                 s.getSubmittedAt(), revealed, revealed ? ordered(a, s, qs, chosen, true) : List.of(),
-                scoreVisible ? result(s, qs, chosen) : null, !scoreVisible, now);
+                scoreVisible ? result(a, s, qs, chosen) : null, !scoreVisible, now);
     }
 
     /** Thứ tự câu và đáp án sinh viên thấy: xáo theo bài nộp nếu bài bật xáo trộn. */
@@ -372,9 +404,17 @@ public class QuizService {
                 reveal ? q.getExplanation() : null);
     }
 
-    /** Số câu đúng tính lại từ câu trả lời; điểm là điểm chính thức (giảng viên có thể đã sửa). */
-    private static ResultView result(Submission s, List<QuizQuestion> qs, Map<Long, Set<Integer>> chosen) {
+    /**
+     * Số câu đúng tính lại từ câu trả lời; điểm là điểm chính thức (giảng viên có thể đã sửa). Bài tổng hợp: điểm
+     * của phần trắc nghiệm (điểm cả bài ở /mixed).
+     */
+    private static ResultView result(Assessment a, Submission s, List<QuizQuestion> qs,
+            Map<Long, Set<Integer>> chosen) {
         QuizGrader.Result r = QuizGrader.grade(qs, chosen);
+        if (a.isMixed()) {
+            return new ResultView(r.correct(), r.total(),
+                    MixedGrader.points(a.getQuizWeight(), r.correct(), r.total()));
+        }
         return new ResultView(r.correct(), r.total(), s.getScore() != null ? s.getScore() : r.score());
     }
 

@@ -29,6 +29,7 @@ import lms.course.EnrollmentRepository;
 import lms.course.FileStorage;
 import lms.course.UploadChecker;
 import lms.course.UploadChecker.Checked;
+import lms.mixed.MixedLifecycle;
 import lms.proctor.ProctorService;
 import lms.quiz.QuizQuestionRepository;
 import lms.submission.SubmissionViews.CourseRef;
@@ -70,11 +71,13 @@ public class SubmissionService {
     private final AuditService audit;
     private final QuizQuestionRepository quizQuestions;
     private final ProctorService proctor;
+    private final MixedLifecycle mixed;
 
     public SubmissionService(AssessmentRepository assessments, CourseRepository courses,
             EnrollmentRepository enrollments, CourseFileRepository courseFiles, SubmissionRepository submissions,
             SubmissionFileRepository files, FileStorage storage, UploadChecker uploads, UserRepository users,
-            AuditService audit, QuizQuestionRepository quizQuestions, ProctorService proctor) {
+            AuditService audit, QuizQuestionRepository quizQuestions, ProctorService proctor, MixedLifecycle mixed) {
+        this.mixed = mixed;
         this.quizQuestions = quizQuestions;
         this.proctor = proctor;
         this.users = users;
@@ -97,8 +100,10 @@ public class SubmissionService {
         Instant now = Instant.now();
         Submission s = submissions.findByAssessmentIdAndUserId(a.getId(), me.userId()).orElse(null);
         Course c = t.course();
+        // Bài tổng hợp: đề phần nộp file chỉ hiện sau khi bấm "Bắt đầu" (đồng hồ tính chung cả bài)
+        boolean started = !a.isMixed() || (s != null && s.getStartedAt() != null);
         return new StudentAssessment(new CourseRef(c.getPublicId(), c.displayCode(), c.getTitle()),
-                assessmentView(a, now, proctor.paperAllowed(a, me)), submissionView(a, s, now), now,
+                assessmentView(a, now, started && proctor.paperAllowed(a, me)), submissionView(a, s, now), now,
                 proctor.studentState(a, me, ip));
     }
 
@@ -128,13 +133,14 @@ public class SubmissionService {
         }).toList();
     }
 
-    @Transactional
+    /** noRollbackFor: bài tổng hợp vừa quá hạn thì được chốt (MixedLifecycle) rồi mới báo SUBMISSION_LOCKED. */
+    @Transactional(noRollbackFor = AppException.class)
     public SubmissionView upload(String assessmentId, MultipartFile upload, AuthPrincipal me) {
         Target t = requireEnrolled(assessmentId, me);
         Assessment a = t.assessment();
         Instant now = Instant.now();
         Submission s = submissions.findByAssessmentIdAndUserId(a.getId(), me.userId()).orElse(null);
-        requireEditable(a, s, now);
+        requireEditable(a, s, me, now);
         Checked file = uploads.check(upload, UploadChecker.SUBMISSION);
         if (s == null) {
             s = submissions.save(new Submission(a.getId(), me.userId()));
@@ -155,14 +161,14 @@ public class SubmissionService {
         return submissionView(a, s, now);
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = AppException.class)
     public SubmissionView deleteFile(String assessmentId, String fileId, AuthPrincipal me) {
         Target t = requireEnrolled(assessmentId, me);
         Assessment a = t.assessment();
         Instant now = Instant.now();
         Submission s = submissions.findByAssessmentIdAndUserId(a.getId(), me.userId())
                 .orElseThrow(() -> AppException.notFound("File"));
-        requireEditable(a, s, now);
+        requireEditable(a, s, me, now);
         SubmissionFile f = files.findByPublicId(fileId).filter(x -> x.getSubmissionId().equals(s.getId()))
                 .orElseThrow(() -> AppException.notFound("File"));
         files.delete(f);
@@ -179,8 +185,12 @@ public class SubmissionService {
         Target t = requireEnrolled(assessmentId, me);
         Assessment a = t.assessment();
         Instant now = Instant.now();
+        if (a.isMixed()) {
+            // Bài tổng hợp nộp chung cả bài qua /student/assessments/{id}/mixed/submit
+            throw new AppException(ErrorCode.BAD_REQUEST, "Mixed assessment: submit the whole assessment");
+        }
         Submission s = submissions.findByAssessmentIdAndUserId(a.getId(), me.userId()).orElse(null);
-        requireEditable(a, s, now);
+        requireEditable(a, s, me, now);
         long count = s == null ? 0 : files.countBySubmissionId(s.getId());
         if (count == 0) {
             throw new AppException(ErrorCode.VALIDATION_FAILED, "Nothing to submit");
@@ -220,7 +230,15 @@ public class SubmissionService {
         return new Target(a, c);
     }
 
-    private static void requireEditable(Assessment a, Submission s, Instant now) {
+    private void requireEditable(Assessment a, Submission s, AuthPrincipal me, Instant now) {
+        if (a.isMixed()) {
+            if (!a.usesFiles()) {
+                throw new AppException(ErrorCode.BAD_REQUEST, "No file part");
+            }
+            // Đã bắt đầu, chưa nộp cả bài, chưa hết giờ (quá hạn thì chốt luôn)
+            mixed.requireInProgress(a, me.userId(), now);
+            return;
+        }
         if (a.isQuiz() || a.isCode()) {
             // Bài trắc nghiệm / lập trình làm qua /student/assessments/{id}/quiz/**, /code/**, không nộp file
             throw new AppException(ErrorCode.BAD_REQUEST, a.isQuiz() ? "Quiz assessment" : "Code assessment");
@@ -242,9 +260,13 @@ public class SubmissionService {
     private AssessmentView assessmentView(Assessment a, Instant now, boolean paperAllowed) {
         CourseFile paper = a.getPaperFileId() == null || !a.isOpened(now) || !paperAllowed ? null
                 : courseFiles.findById(a.getPaperFileId()).orElse(null);
-        return CourseViews.assessmentView(a, paper, a.isQuiz() ? quizQuestions.countByAssessmentId(a.getId())
-                : a.isCode() ? assessments.countCodeProblems(a.getId()) : 0,
-                now);
+        return CourseViews.assessmentView(a, paper, questionCount(a), now);
+    }
+
+    /** Số câu hiện ở thẻ bài: câu trắc nghiệm (cả bài tổng hợp có phần trắc nghiệm), câu lập trình; 0 với nộp file. */
+    long questionCount(Assessment a) {
+        return a.usesQuiz() ? quizQuestions.countByAssessmentId(a.getId())
+                : a.isCode() ? assessments.countCodeProblems(a.getId()) : 0;
     }
 
     private SubmissionView submissionView(Assessment a, Submission s, Instant now) {
@@ -252,8 +274,10 @@ public class SubmissionService {
         String status = statusOf(a, s, fs.size(), now);
         String grader = s == null || s.getGradedBy() == null ? null
                 : users.findById(s.getGradedBy()).map(User::getFullName).orElse(null);
-        return new SubmissionView(status, s == null ? null : s.getSubmittedAt(),
-                SubmissionViews.IN_PROGRESS.equals(status), fileViews(fs),
+        // Bài tổng hợp: thêm/xóa file trong lượt làm bài (đã bắt đầu, chưa nộp, chưa hết giờ)
+        boolean editable = a.isMixed() ? a.usesFiles() && MixedLifecycle.isInProgress(a, s, now)
+                : SubmissionViews.IN_PROGRESS.equals(status);
+        return new SubmissionView(status, s == null ? null : s.getSubmittedAt(), editable, fileViews(fs),
                 a.isScoreVisible(now) ? gradeView(s, grader) : null);
     }
 
@@ -282,6 +306,7 @@ public class SubmissionService {
 
     static GradeView gradeView(Submission s, String graderName) {
         return s == null || !s.isGraded() ? null
-                : new GradeView(s.getScore(), s.getFeedback(), s.getGradedAt(), graderName, s.getAutoScore());
+                : new GradeView(s.getScore(), s.getFeedback(), s.getGradedAt(), graderName, s.getAutoScore(),
+                        s.getManualScore());
     }
 }
