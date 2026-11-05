@@ -128,7 +128,7 @@ public class CodeJudgeQueue {
     /** Server dừng giữa lúc chấm: đưa bài đang chấm về hàng đợi (CodeJudgeWorker gọi khi khởi động). */
     @Transactional
     public int requeueInterrupted() {
-        return attempts.requeueRunning();
+        return attempts.failStuckAttempts(Instant.now().minusSeconds(30));
     }
 
     public CodeJudge.Content testContent(long testId) {

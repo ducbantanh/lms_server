@@ -69,8 +69,8 @@ public interface CodeAttemptRepository extends JpaRepository<CodeAttempt, Long> 
 
     /** Server dừng giữa lúc chấm: đưa bài đang chấm về hàng đợi (CodeJudgeWorker gọi khi khởi động). */
     @Modifying
-    @Query("update CodeAttempt a set a.status = 0, a.claimToken = null where a.status = 1")
-    int requeueRunning();
+    @Query("update CodeAttempt a set a.status = 2, a.verdict = 'SE', a.compileOutput = 'Lỗi: Máy chủ chấm bài bị khởi động lại hoặc quá tải bộ nhớ.', a.judgedAt = CURRENT_TIMESTAMP where a.status = 1 or (a.status = 0 and a.createdAt < :cutoff)")
+    int failStuckAttempts(@Param("cutoff") Instant cutoff);
 
     /** Số bài chờ/đang chấm của một bài (giảng viên xem tiến độ chấm lại). */
     @Query("select count(a) from CodeAttempt a where a.assessmentId = :assessmentId and a.status <> 2")

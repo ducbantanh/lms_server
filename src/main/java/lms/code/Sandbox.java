@@ -46,7 +46,7 @@ public interface Sandbox {
             return switch (language) {
                 case C -> List.of(gcc, "-O2", "-std=gnu11", "-pipe", "-o", binary, language.sourceFile(), "-lm");
                 case CPP -> List.of(gpp, "-O2", "-std=gnu++17", "-pipe", "-o", binary, language.sourceFile());
-                case JAVA -> List.of(javac, "-encoding", "UTF-8", "-J-Xmx64m", language.sourceFile());
+                case JAVA -> List.of(javac, "-encoding", "UTF-8", "-J-Xms16m", "-J-Xmx48m", "-J-XX:+UseSerialGC", "-J-XX:TieredStopAtLevel=1", language.sourceFile());
                 // Chỉ kiểm tra cú pháp (không ghi file .pyc): lỗi cú pháp báo như lỗi biên dịch
                 case PYTHON -> List.of(python, "-I", "-X", "utf8", "-c",
                         "compile(open('main.py','rb').read(),'main.py','exec')");
@@ -56,7 +56,7 @@ public interface Sandbox {
         public List<String> run(CodeLanguage language, String binary, int memoryMb) {
             return switch (language) {
                 case C, CPP -> List.of(binary);
-                case JAVA -> List.of(java, "-Xmx" + memoryMb + "m", "-Xss8m", "-XX:+UseSerialGC",
+                case JAVA -> List.of(java, "-Xms16m", "-Xmx" + Math.min(memoryMb, 64) + "m", "-Xss2m", "-XX:+UseSerialGC", "-XX:TieredStopAtLevel=1",
                         "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8", "-cp", ".",
                         "Main");
                 case PYTHON -> List.of(python, "-I", "-X", "utf8", language.sourceFile());
