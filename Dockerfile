@@ -66,4 +66,4 @@ ENV APP_JUDGE_WORK_DIR=data/judge
 
 EXPOSE 8080
 
-ENTRYPOINT ["sh", "-c", "java -XX:+UseSerialGC -Xms64m -Xmx160m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -XX:CICompilerCount=2 -Dserver.port=${PORT:-8080} -Djava.security.egd=file:/dev/./urandom -jar app.jar"]
+ENTRYPOINT ["sh", "-c", "java -XX:+UseSerialGC -Xms64m -Xmx160m -XX:CICompilerCount=2 -Dserver.port=${PORT:-8080} -Djava.security.egd=file:/dev/./urandom -jar app.jar"]
