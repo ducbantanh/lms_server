@@ -58,7 +58,10 @@ class LocalSandbox implements Sandbox {
                 throws IOException, InterruptedException {
             List<String> argv = command;
             if (memoryMb != null && !WINDOWS) {
-                argv = new ArrayList<>(List.of("sh", "-c", "ulimit -v " + memoryMb * 1024L + "; exec \"$@\"", "sh"));
+                // Thêm headroom 512 MB bộ nhớ ảo (address space) cho runtime/shared libraries (glibc, Python 3)
+                // trên Linux 64-bit; tránh việc ulimit -v quá chặt làm tiến trình crash ngay khi vừa khởi động.
+                long virtualLimitKb = (memoryMb + 512L) * 1024L;
+                argv = new ArrayList<>(List.of("sh", "-c", "ulimit -v " + virtualLimitKb + "; exec \"$@\"", "sh"));
                 argv.addAll(command);
             }
             Path input = dir.resolve(INPUT);
@@ -83,6 +86,8 @@ class LocalSandbox implements Sandbox {
             }
             if (!WINDOWS) {
                 env.put("LANG", "C.UTF-8");
+                env.put("LC_ALL", "C.UTF-8");
+                env.put("PYTHONIOENCODING", "utf-8");
             }
 
             long start = System.nanoTime();

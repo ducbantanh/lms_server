@@ -12,6 +12,7 @@ ARG CLIENT_BRANCH=main
 ARG CACHEBUST=1
 
 RUN apk add --no-cache git
+ADD https://api.github.com/repos/ducbantanh/lms_client/git/refs/heads/main /tmp/client_version.json
 RUN git clone --depth 1 -b ${CLIENT_BRANCH} ${CLIENT_REPO} .
 RUN npm ci || npm install
 RUN npm run build
@@ -36,7 +37,7 @@ RUN mvn clean package -DskipTests
 # ==========================================
 # Giai đoạn 3: Runtime Image
 # ==========================================
-FROM eclipse-temurin:17-jre-jammy
+FROM eclipse-temurin:17-jdk-jammy
 WORKDIR /app
 
 # Cài đặt các trình biên dịch/thông dịch để máy chấm bài (Judge) hoạt động (sandbox=local)
@@ -44,6 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     python3 \
+    python-is-python3 \
     coreutils \
     && rm -rf /var/lib/apt/lists/*
 
