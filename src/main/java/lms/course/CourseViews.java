@@ -1,5 +1,6 @@
 package lms.course;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
@@ -48,11 +49,14 @@ public final class CourseViews {
      * paperFileId/paperFileName null khi không có đề hoặc sinh viên chưa đến giờ mở.
      * answerMode: Assessment.MODE_*; bài trắc nghiệm có questionCount câu, timeLimitMinutes null = làm tới giờ đóng.
      * scoreRelease: Assessment.SCORE_* (khi nào sinh viên thấy điểm). proctored: bài kiểm tra có giám sát
-     * (sinh viên vào phòng thi mới xem được đề, lms.proctor).
+     * (sinh viên vào phòng thi mới xem được đề, lms.proctor). Bài tổng hợp (answerMode 3): quizWeight, codeWeight,
+     * fileWeight là điểm tối đa từng phần (null = không có phần đó; null hết với bài khác), questionCount là số câu
+     * trắc nghiệm.
      */
     public record AssessmentView(String id, int type, String title, String description, String paperFileId,
             String paperFileName, Instant opensAt, Instant closesAt, String status, int answerMode,
-            Integer timeLimitMinutes, long questionCount, int scoreRelease, boolean proctored) {
+            Integer timeLimitMinutes, long questionCount, int scoreRelease, boolean proctored, BigDecimal quizWeight,
+            BigDecimal codeWeight, BigDecimal fileWeight) {
     }
 
     /** paper null = không hiện đề (không có đề, hoặc sinh viên chưa đến giờ mở). */
@@ -60,7 +64,8 @@ public final class CourseViews {
         return new AssessmentView(a.getPublicId(), a.getType(), a.getTitle(), a.getDescription(),
                 paper == null ? null : paper.getPublicId(), paper == null ? null : paper.getName(),
                 a.getOpensAt(), a.getClosesAt(), a.statusAt(now), a.getAnswerMode(), a.getTimeLimitMinutes(),
-                questionCount, a.getScoreRelease(), a.isProctored() && a.getType() == Assessment.TYPE_EXAM);
+                questionCount, a.getScoreRelease(), a.isProctored() && a.getType() == Assessment.TYPE_EXAM,
+                a.getQuizWeight(), a.getCodeWeight(), a.getFileWeight());
     }
 
     public record CourseDetail(CourseView course, List<SectionView> sections, List<LessonView> lessons,

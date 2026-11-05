@@ -51,6 +51,10 @@ public class Submission {
     @Column(name = "auto_score", precision = 4, scale = 2)
     private BigDecimal autoScore;
 
+    /** Bài tổng hợp: điểm phần nộp file giảng viên chấm (score = autoScore + manualScore); NULL = chưa chấm. */
+    @Column(name = "manual_score", precision = 4, scale = 2)
+    private BigDecimal manualScore;
+
     @Column(length = 2000)
     private String feedback;
 
@@ -127,6 +131,34 @@ public class Submission {
         }
     }
 
+    public BigDecimal getManualScore() {
+        return manualScore;
+    }
+
+    /**
+     * Bài tổng hợp: cập nhật điểm máy chấm (trắc nghiệm + lập trình; đổi khi máy chấm xong lần nộp). Bài không có
+     * phần nộp file thì điểm chính thức là điểm máy chấm; có thì chờ giảng viên chấm phần nộp file.
+     */
+    public void mixedAutoGrade(BigDecimal auto, boolean manualPart, Instant at) {
+        this.autoScore = auto;
+        BigDecimal total = !manualPart ? auto : manualScore == null ? null : auto.add(manualScore);
+        if (total != null && (score == null || total.compareTo(score) != 0)) {
+            this.score = total;
+            if (!manualPart) {
+                this.gradedAt = at;
+                this.gradedBy = null;
+            }
+        }
+    }
+
+    /** Bài tổng hợp: giảng viên chấm phần nộp file; điểm chính thức = điểm máy chấm + điểm phần này. */
+    public void gradeManualPart(BigDecimal manual, String feedback, long graderId, Instant at) {
+        BigDecimal auto = autoScore == null ? BigDecimal.ZERO.setScale(2) : autoScore;
+        this.manualScore = manual;
+        this.autoScore = auto;
+        grade(auto.add(manual), feedback, graderId, at);
+    }
+
     public Instant getSubmittedAt() {
         return submittedAt;
     }
@@ -168,6 +200,7 @@ public class Submission {
 
     public void clearGrade() {
         this.score = null;
+        this.manualScore = null;
         this.feedback = null;
         this.gradedBy = null;
         this.gradedAt = null;

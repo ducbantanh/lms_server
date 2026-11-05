@@ -1,5 +1,6 @@
 package lms.course;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 import jakarta.persistence.Column;
@@ -25,6 +26,11 @@ public class Assessment {
     public static final int MODE_QUIZ = 1;
     /** Bài lập trình: sinh viên nộp mã nguồn, máy chấm chạy bộ test (lms.code). */
     public static final int MODE_CODE = 2;
+    /**
+     * Bài tổng hợp: từ hai phần trở lên trong trắc nghiệm, lập trình, nộp file; mỗi phần có điểm tối đa (quizWeight,
+     * codeWeight, fileWeight, tổng 10), làm trong một lần bắt đầu và nộp chung (lms.mixed).
+     */
+    public static final int MODE_MIXED = 3;
 
     /** Bài trắc nghiệm: khi nào sinh viên được xem đáp án đúng và giải thích. */
     public static final int REVEAL_NEVER = 0;
@@ -85,6 +91,16 @@ public class Assessment {
     @Column(name = "score_release", nullable = false)
     private int scoreRelease;
 
+    /** Bài tổng hợp: điểm tối đa của phần trắc nghiệm; NULL = không có phần này (và mọi bài khác). */
+    @Column(name = "quiz_weight", precision = 4, scale = 2)
+    private BigDecimal quizWeight;
+
+    @Column(name = "code_weight", precision = 4, scale = 2)
+    private BigDecimal codeWeight;
+
+    @Column(name = "file_weight", precision = 4, scale = 2)
+    private BigDecimal fileWeight;
+
     /** Bài kiểm tra có giám sát (lms.proctor): sinh viên phải vào phòng thi mới xem được đề và làm bài. */
     @Column(nullable = false)
     private boolean proctored;
@@ -144,6 +160,25 @@ public class Assessment {
         Assessment a = new Assessment(courseId, type, title, description, null, opensAt, closesAt);
         a.answerMode = MODE_CODE;
         a.scoreRelease = scoreRelease;
+        return a;
+    }
+
+    /**
+     * Bài tổng hợp; weight null = không có phần đó. Đề PDF (paperFileId) chỉ dùng cho phần nộp file. Thời gian làm
+     * bài, xáo trộn và xem đáp án như bài trắc nghiệm, tính chung cho cả bài.
+     */
+    public static Assessment mixed(long courseId, int type, String title, String description, Long paperFileId,
+            Instant opensAt, Instant closesAt, Integer timeLimitMinutes, boolean shuffle, int revealMode,
+            int scoreRelease, BigDecimal quizWeight, BigDecimal codeWeight, BigDecimal fileWeight) {
+        Assessment a = new Assessment(courseId, type, title, description, paperFileId, opensAt, closesAt);
+        a.answerMode = MODE_MIXED;
+        a.timeLimitMinutes = timeLimitMinutes;
+        a.shuffle = shuffle;
+        a.revealMode = revealMode;
+        a.scoreRelease = scoreRelease;
+        a.quizWeight = quizWeight;
+        a.codeWeight = codeWeight;
+        a.fileWeight = fileWeight;
         return a;
     }
 
@@ -234,6 +269,42 @@ public class Assessment {
 
     public boolean isCode() {
         return answerMode == MODE_CODE;
+    }
+
+    public boolean isMixed() {
+        return answerMode == MODE_MIXED;
+    }
+
+    /** Có câu trắc nghiệm (assessment_questions): bài trắc nghiệm, hoặc bài tổng hợp có phần trắc nghiệm. */
+    public boolean usesQuiz() {
+        return isQuiz() || (isMixed() && quizWeight != null);
+    }
+
+    /** Có câu lập trình (code_problems): bài lập trình, hoặc bài tổng hợp có phần lập trình. */
+    public boolean usesCode() {
+        return isCode() || (isMixed() && codeWeight != null);
+    }
+
+    /** Sinh viên nộp file: bài nộp file, hoặc bài tổng hợp có phần nộp file. */
+    public boolean usesFiles() {
+        return answerMode == MODE_FILE || (isMixed() && fileWeight != null);
+    }
+
+    /** Làm bài theo lượt: bấm "Bắt đầu" (submissions.started_at), hết giờ thì server chốt bài (QuizSweeper). */
+    public boolean isTimed() {
+        return isQuiz() || isMixed();
+    }
+
+    public BigDecimal getQuizWeight() {
+        return quizWeight;
+    }
+
+    public BigDecimal getCodeWeight() {
+        return codeWeight;
+    }
+
+    public BigDecimal getFileWeight() {
+        return fileWeight;
     }
 
     public Integer getTimeLimitMinutes() {

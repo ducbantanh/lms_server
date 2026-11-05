@@ -56,6 +56,7 @@ import lms.course.CourseService;
 import lms.course.CourseViews;
 import lms.course.CourseViews.AssessmentView;
 import lms.course.EnrollmentRepository;
+import lms.mixed.MixedLifecycle;
 import lms.notification.NotificationService;
 import lms.report.ReportService;
 import lms.submission.Submission;
@@ -97,12 +98,14 @@ public class CodeService {
     private final AuditService audit;
     private final EntityManager em;
     private final CodeJudgeQueue judgeQueue;
+    private final MixedLifecycle mixed;
 
     public CodeService(AssessmentRepository assessments, CourseRepository courses, CourseService courseService,
             EnrollmentRepository enrollments, SubmissionRepository submissions, UserRepository users,
             CodeSettingsRepository settings, CodeProblemRepository problems, CodeTestRepository tests,
             CodeAttemptRepository attempts, NotificationService notifications, AuditService audit, EntityManager em,
-            CodeJudgeQueue judgeQueue) {
+            CodeJudgeQueue judgeQueue, MixedLifecycle mixed) {
+        this.mixed = mixed;
         this.assessments = assessments;
         this.courses = courses;
         this.courseService = courseService;
@@ -144,6 +147,20 @@ public class CodeService {
         return CourseViews.assessmentView(a, null, applied.problems(), Instant.now());
     }
 
+    /**
+     * Phần lập trình của bài tổng hợp vừa lưu: ngôn ngữ, các câu và bộ test (files: part ZIP bộ test như create).
+     * Trả về số câu và số test.
+     */
+    @Transactional
+    public Applied setupProblems(Assessment a, CodeRequest req, Map<String, MultipartFile> files, long userId) {
+        List<CodeLanguage> languages = languages(req);
+        List<List<TestArchive.Test>> archives = archives(req.problems(), files);
+        CodeSettings s = new CodeSettings(a.getId());
+        s.setLanguages(languages);
+        settings.save(s);
+        return applyProblems(a, req, archives, userId);
+    }
+
     /** Ngôn ngữ, các câu và bộ test đầy đủ; admin xem được. */
     @Transactional(readOnly = true)
     public TeacherCode teacherCode(String courseId, String assessmentId, AuthPrincipal me) {
@@ -170,6 +187,7 @@ public class CodeService {
         CodeSettings s = settings.findById(a.getId()).orElseThrow(() -> AppException.notFound("Assessment"));
         s.setLanguages(languages);
         Applied applied = applyProblems(a, req, archives, me.userId());
+        mixed.rescoreAll(a, now);
         audit.record(me.userId(), AuditService.ASSESSMENT_UPDATED, c.displayCode(), a.getTitle() + " (lập trình, "
                 + applied.problems() + " câu, " + applied.tests() + " test, chấm lại " + applied.requeued()
                 + " lần nộp)");
@@ -320,7 +338,7 @@ public class CodeService {
                 .collect(Collectors.groupingBy(CodeAttemptInfo::problemId));
         List<ProblemSummary> list = ps.stream().map(p -> problemSummary(p, counts.getOrDefault(p.getId(), 0L),
                 mine.getOrDefault(p.getId(), List.of()), visible)).toList();
-        return new CodeState(languageViews(t.settings()), list, !visible, isOpen(t.assessment(), now), now);
+        return new CodeState(languageViews(t.settings()), list, !visible, isOpen(t.assessment(), me, now), now);
     }
 
     /** Một câu: đề, test mẫu, các lần chạy/nộp của mình ở câu này. */
@@ -336,11 +354,14 @@ public class CodeService {
         return new ProblemDetail(problemSummary(p, all.size(), mine, visible), p.getStatement(),
                 all.stream().filter(CodeTestInfo::sample).map(x -> new SampleView(x.input(), x.expected())).toList(),
                 mine.stream().map(x -> summary(x, ids, visible)).toList(), languageViews(t.settings()), !visible,
-                isOpen(t.assessment(), now), now);
+                isOpen(t.assessment(), me, now), now);
     }
 
-    /** Chạy thử với các test mẫu: không tính là một lần nộp. */
-    @Transactional
+    /**
+     * Chạy thử với các test mẫu: không tính là một lần nộp. noRollbackFor: bài tổng hợp vừa quá hạn thì được chốt
+     * (MixedLifecycle) rồi mới báo SUBMISSION_LOCKED.
+     */
+    @Transactional(noRollbackFor = AppException.class)
     public AttemptView run(String assessmentId, String problemId, RunRequest req, AuthPrincipal me) {
         Enrolled t = requireEnrolledCode(assessmentId, me);
         CodeProblem p = requireProblem(t.assessment(), problemId);
@@ -354,8 +375,11 @@ public class CodeService {
         return summary(x, p, true);
     }
 
-    /** Nộp bài một câu: chấm với mọi test; lần nộp đầu của bài tạo bài nộp (trạng thái "đã nộp"). */
-    @Transactional
+    /**
+     * Nộp bài một câu: chấm với mọi test; lần nộp đầu của bài tạo bài nộp (trạng thái "đã nộp"). Bài tổng hợp: bài
+     * nộp có từ lúc bắt đầu và chỉ chốt khi nộp cả bài (lms.mixed).
+     */
+    @Transactional(noRollbackFor = AppException.class)
     public AttemptView submit(String assessmentId, String problemId, RunRequest req, AuthPrincipal me, String ip) {
         Enrolled t = requireEnrolledCode(assessmentId, me);
         Assessment a = t.assessment();
@@ -364,7 +388,9 @@ public class CodeService {
         Instant now = x.getCreatedAt();
         Submission s = submissions.findByAssessmentIdAndUserId(a.getId(), me.userId())
                 .orElseGet(() -> submissions.save(new Submission(a.getId(), me.userId())));
-        s.submit(now);
+        if (!a.isMixed()) {
+            s.submit(now);
+        }
         s.touch();
         audit.record(me.userId(), AuditService.SUBMISSION_SUBMITTED, t.course().displayCode(),
                 a.getTitle() + " · Câu " + (p.getPosition() + 1) + " (" + x.getLanguage().label() + ", "
@@ -402,7 +428,7 @@ public class CodeService {
     }
 
     private Assessment requireCode(Course c, String assessmentId) {
-        return assessments.findByPublicIdAndCourseId(assessmentId, c.getId()).filter(Assessment::isCode)
+        return assessments.findByPublicIdAndCourseId(assessmentId, c.getId()).filter(Assessment::usesCode)
                 .orElseThrow(() -> AppException.notFound("Assessment"));
     }
 
@@ -413,15 +439,22 @@ public class CodeService {
         return new Managed(c, a, s);
     }
 
-    /** Bài chưa mở thì sinh viên chưa được xem đề: ASSESSMENT_NOT_OPEN. */
+    /**
+     * Bài chưa mở thì sinh viên chưa được xem đề: ASSESSMENT_NOT_OPEN. Bài tổng hợp: đề chỉ hiện sau khi bấm
+     * "Bắt đầu" (đồng hồ tính chung cả bài).
+     */
     private Enrolled requireEnrolledCode(String assessmentId, AuthPrincipal me) {
-        Assessment a = assessments.findByPublicId(assessmentId).filter(Assessment::isCode)
+        Assessment a = assessments.findByPublicId(assessmentId).filter(Assessment::usesCode)
                 .filter(x -> enrollments.existsByCourseIdAndUserId(x.getCourseId(), me.userId()))
                 .orElseThrow(() -> AppException.notFound("Assessment"));
         Course c = courses.findById(a.getCourseId()).orElseThrow(() -> AppException.notFound("Assessment"));
         CodeSettings s = settings.findById(a.getId()).orElseThrow(() -> AppException.notFound("Assessment"));
         if (!a.isOpened(Instant.now())) {
             throw new AppException(ErrorCode.ASSESSMENT_NOT_OPEN);
+        }
+        if (a.isMixed() && submissions.findByAssessmentIdAndUserId(a.getId(), me.userId())
+                .map(Submission::getStartedAt).isEmpty()) {
+            throw new AppException(ErrorCode.BAD_REQUEST, "Assessment not started");
         }
         return new Enrolled(c, a, s);
     }
@@ -431,13 +464,20 @@ public class CodeService {
                 .orElseThrow(() -> AppException.notFound("Problem"));
     }
 
-    private static boolean isOpen(Assessment a, Instant now) {
+    /** Còn chạy / nộp được: bài đang mở; bài tổng hợp thì sinh viên đang làm (đã bắt đầu, chưa nộp, chưa hết giờ). */
+    private boolean isOpen(Assessment a, AuthPrincipal me, Instant now) {
+        if (a.isMixed()) {
+            return MixedLifecycle.isInProgress(a,
+                    submissions.findByAssessmentIdAndUserId(a.getId(), me.userId()).orElse(null), now);
+        }
         return a.isOpened(now) && !a.isClosed(now);
     }
 
     private CodeAttempt enqueue(Enrolled t, CodeProblem p, RunRequest req, int kind, AuthPrincipal me) {
         Assessment a = t.assessment();
-        if (a.isClosed(Instant.now())) {
+        if (a.isMixed()) {
+            mixed.requireInProgress(a, me.userId(), Instant.now());
+        } else if (a.isClosed(Instant.now())) {
             throw new AppException(ErrorCode.SUBMISSION_LOCKED);
         }
         CodeLanguage lang = CodeLanguage.of(req.language()).filter(t.settings().getLanguages()::contains)
@@ -503,7 +543,7 @@ public class CodeService {
         return s.getBytes(StandardCharsets.UTF_8).length;
     }
 
-    private record Applied(int problems, int tests, int requeued) {
+    public record Applied(int problems, int tests, int requeued) {
     }
 
     /**

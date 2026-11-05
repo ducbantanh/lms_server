@@ -16,6 +16,8 @@ import lms.course.Assessment;
 import lms.course.AssessmentRepository;
 import lms.course.Course;
 import lms.course.CourseRepository;
+import lms.mixed.MixedScorer;
+import lms.submission.SubmissionRepository;
 import lms.realtime.RealtimeEvent;
 import lms.realtime.RealtimeRelay;
 
@@ -39,9 +41,14 @@ public class CodeJudgeQueue {
     private final AssessmentRepository assessments;
     private final CourseRepository courses;
     private final RealtimeRelay relay;
+    private final SubmissionRepository submissions;
+    private final MixedScorer mixedScorer;
 
     public CodeJudgeQueue(CodeAttemptRepository attempts, CodeProblemRepository problems, CodeTestRepository tests,
-            AssessmentRepository assessments, CourseRepository courses, RealtimeRelay relay) {
+            AssessmentRepository assessments, CourseRepository courses, RealtimeRelay relay,
+            SubmissionRepository submissions, MixedScorer mixedScorer) {
+        this.submissions = submissions;
+        this.mixedScorer = mixedScorer;
         this.attempts = attempts;
         this.problems = problems;
         this.tests = tests;
@@ -104,7 +111,18 @@ public class CodeJudgeQueue {
             return;
         }
         x.finish(result, now);
+        rescoreMixed(x, now);
         announceJudged(x);
+    }
+
+    /** Bài tổng hợp đã nộp: điểm phần lập trình (số câu AC) đổi theo kết quả lần nộp vừa chấm. */
+    private void rescoreMixed(CodeAttempt x, Instant now) {
+        if (!x.isSubmit()) {
+            return;
+        }
+        assessments.findById(x.getAssessmentId()).filter(Assessment::isMixed)
+                .ifPresent(a -> submissions.findByAssessmentIdAndUserId(a.getId(), x.getUserId())
+                        .ifPresent(s -> mixedScorer.rescore(a, s, now)));
     }
 
     /** Server dừng giữa lúc chấm: đưa bài đang chấm về hàng đợi (CodeJudgeWorker gọi khi khởi động). */

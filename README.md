@@ -1,15 +1,22 @@
 # LMS Server — Spring Boot
 
-Server cho hệ thống LMS chạy trong LAN, giai đoạn 1. Kiến trúc là **modular monolith**: một process Spring Boot, một database MySQL. Code chia theo miền nghiệp vụ (auth, user, realtime, ...), không chia theo loại file.
+> 🌐 **Live Demo (Production):** [https://lms-server-wmqp.onrender.com](https://lms-server-wmqp.onrender.com)
 
-Server đã có sẵn:
+Hệ thống máy chủ LMS (Learning Management System). Kiến trúc được thiết kế theo mô hình **modular monolith**: một process Spring Boot duy nhất kết hợp cơ sở dữ liệu MySQL. Mã nguồn phân chia chặt chẽ theo miền nghiệp vụ (domain-driven: auth, user, course, submission, judge, proctor, realtime...), bảo đảm tính độc lập, dễ bảo trì và tối ưu hiệu năng.
 
-- Login với role dạng số, **opaque session** lưu trong MySQL, cookie `HttpOnly`, CSRF token.
-- Phân quyền theo permission (`@RequirePermission`), deny by default.
-- WebSocket `/ws`: theo dõi presence realtime, ép logout tức thì.
-- Admin quản lý user: tìm kiếm, khóa/mở khóa, xóa, ép logout, import sinh viên (text hoặc `.txt`).
-- Audit log cho login và các thao tác admin.
-- Flyway migration, profile dev/prod, file `.env`.
+Các tính năng chính của hệ thống:
+
+- **Xác thực & Bảo mật:** Opaque session lưu trong MySQL, cookie `HttpOnly` an toàn, bảo vệ chống CSRF, phân quyền chặt chẽ (`@RequirePermission`, deny by default), thu hồi phiên và ép đăng xuất tức thì qua WebSocket `/ws`.
+- **Quản trị người dùng & Kiểm toán:** Quản lý tài khoản đa vai trò (Admin, Giảng viên, Sinh viên), import sinh viên hàng loạt, cấu hình hệ thống, lưu vết nhật ký kiểm toán (Audit Logs) toàn diện cho mọi thao tác quan trọng.
+- **Quản lý đào tạo & Khóa học:** Quản lý khóa học theo kỳ học, cấu trúc bài học và tài liệu đính kèm theo tuần/mục, hỗ trợ 3 phương thức ghi danh (mã tham gia, danh sách lớp, tự do).
+- **Đánh giá & Chấm điểm đa dạng:**
+  - Bài tập nộp file (PDF/DOCX/PPTX) với giao diện chấm điểm trực quan cho giảng viên.
+  - Bài trắc nghiệm tự động chấm từ ngân hàng đề theo môn học, hỗ trợ câu chọn một hoặc nhiều đáp án.
+  - Bài lập trình tự động chấm với máy chấm (Code Judge) chạy trong sandbox an toàn (C/C++, Java, Python), hỗ trợ bộ test mẫu và test ẩn.
+  - Bài kiểm tra tổng hợp (Mixed Assessment) kết hợp nhiều hình thức trong cùng một bài thi.
+- **Giám sát thi trực tuyến (Exam Proctoring):** Chế độ phòng thi với mã PIN bảo mật, khóa toàn màn hình, theo dõi vi phạm chuyển tab/phím tắt, giám sát trực tiếp qua WebSocket.
+- **Thời khóa biểu & Điểm danh:** Quản lý danh mục phòng học, tạo lịch học tự động, điểm danh QR xoay vòng chống gian lận, quy trình nộp và duyệt đơn xin nghỉ học.
+- **Báo cáo & Sao lưu:** Xuất bảng điểm tổng hợp định dạng CSV, nén ZIP toàn bộ bài nộp, công cụ sao lưu và khôi phục (Backup & Restore) an toàn.
 
 ## 1. Chạy lần đầu
 
@@ -20,10 +27,13 @@ Yêu cầu: JDK 17+ (khuyên dùng 21), Maven 3.9+ (hoặc IntelliJ IDEA), Docke
 docker compose up -d
 
 # 2. Tạo file cấu hình
+# Windows PowerShell: Copy-Item .env.example .env (hoặc copy .env.example .env)
 cp .env.example .env
 
 # 3. Chạy server (profile dev)
 mvn spring-boot:run
+# Hoặc dùng Maven Wrapper có sẵn trên Windows:
+# .\mvnw.cmd spring-boot:run
 ```
 
 Mở http://localhost:8080/dev-console.html để test nhanh khi chưa có frontend.
@@ -41,22 +51,22 @@ Khóa học demo do `lms.course.DemoCourseInitializer` tạo một lần khi DB 
 
 Chạy test: `mvn test`
 
-## 2. Cấu trúc source và người phụ trách
+## 2. Cấu trúc mã nguồn
 
 ```
 src/main/java/lms/
 ├── LmsServerApplication.java   APP_JUDGE_MODE=worker thì chạy JudgeWorkerApplication (máy chấm riêng, không web)
 ├── JudgeWorkerApplication.java
-├── config/            P1  AppProperties, WebMvcConfig, PasswordConfig, seed admin, DevConsoleGuard
-├── common/            P1  ApiResponse, ErrorCode, AppException, GlobalExceptionHandler, RandomTokens
-├── auth/              P2  login/logout/me/change-password, AuthInterceptor, Role, PermissionService
-│   └── session/       P2  SessionEntity, SessionService (opaque token), SessionCookies
-├── realtime/          P3  WebSocketConfig, handshake auth, RealtimeHub (presence), sweeper; RealtimeRelay gửi sự kiện thẳng hoặc qua realtime_outbox khi máy chấm chạy process riêng
-├── user/              P4  User, AdminUserController, UserAdminService
-│   └── importing/     P4  StudentImportParser (Java thuần), StudentImportService
-├── audit/             P1  AuditService, AuditController
+├── config/            AppProperties, WebMvcConfig, PasswordConfig, seed admin, DevConsoleGuard
+├── common/            ApiResponse, ErrorCode, AppException, GlobalExceptionHandler, RandomTokens
+├── auth/              login/logout/me/change-password, AuthInterceptor, Role, PermissionService
+│   └── session/       SessionEntity, SessionService (opaque token), SessionCookies
+├── realtime/          WebSocketConfig, handshake auth, RealtimeHub (presence), sweeper; RealtimeRelay gửi sự kiện thẳng hoặc qua realtime_outbox khi máy chấm chạy process riêng
+├── user/              User, AdminUserController, UserAdminService
+│   └── importing/     StudentImportParser (Java thuần), StudentImportService
+├── audit/             AuditService, AuditController
 ├── course/                Khóa học: mục/tuần, bài học, tài liệu (FileStorage), bài kiểm tra, ghi danh, /teacher/**, /files/**
-├── student/           P6  API sinh viên: dashboard, nội dung khóa học, tham gia bằng mã
+├── student/           API sinh viên: dashboard, nội dung khóa học, tham gia bằng mã
 ├── submission/            Sinh viên làm bài (xem đề, nộp file) và giảng viên chấm điểm; /student/assessments/**, /teacher/.../submissions/**, /submission-files/**
 ├── attendance/            Điểm danh theo buổi: mã QR đổi mỗi 10 giây (AttendanceQr), điểm danh thủ công; /teacher/.../attendance/**, /student/attendance/**
 ├── code/                  Bài lập trình nhiều câu, không điểm (kết quả = số test đúng): mỗi câu đề + bộ test (test mẫu / ẩn, soạn tay hoặc ZIP), sinh viên chạy thử / nộp nhiều lần, hàng đợi trong DB, CodeJudgeWorker chấm nền trong sandbox (LocalSandbox / DockerSandbox); /teacher/.../code-assessments, /student/assessments/{id}/code/**
@@ -67,8 +77,8 @@ src/main/java/lms/
 ├── leave/                 Đơn xin nghỉ buổi học: sinh viên gửi lý do + minh chứng (ảnh/PDF) trước hạn giảng viên quy định, giảng viên duyệt, đồng ý thì điểm danh "có phép"; /student/meetings/{id}/leave-request, /teacher/.../leave-requests, /leave-files/**
 └── schedule/              Lịch học do admin xếp: danh mục phòng học, lịch lặp hằng tuần sinh sẵn từng buổi (ScheduleRules: 1 tiết = 1 giờ), kiểm tra trùng phòng/giảng viên/lớp, buổi bù/dời/nghỉ, mở điểm danh từ buổi học; /admin/rooms, /admin/schedules, /admin/meetings, /schedule
 src/main/resources/
-├── db/migration/      P1  V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học, V5 bài học, V6 đề riêng của bài, V7 bài nộp, V8 chấm điểm, V9 thông báo, …, V14 điểm danh, V15–V16 ngân hàng câu hỏi theo môn học, V17 bài trắc nghiệm, V18 công bố điểm sau giờ đóng, V19–V21 bài lập trình (bộ test ZIP, nhiều câu), V24 lịch học, V25 đơn xin nghỉ, V26 tự chấm lại khi lỗi máy chấm, V27 hàng đợi sự kiện realtime của máy chấm riêng, V28 giám sát bài kiểm tra
-└── static/            P5, P6  frontend build (AdminLTE / Next export) đặt ở đây
+├── db/migration/      V1 core schema, V2 role/permission, V3 courses, V4 quản lý khóa học, V5 bài học, V6 đề riêng của bài, V7 bài nộp, V8 chấm điểm, V9 thông báo, …, V14 điểm danh, V15–V16 ngân hàng câu hỏi theo môn học, V17 bài trắc nghiệm, V18 công bố điểm sau giờ đóng, V19–V21 bài lập trình (bộ test ZIP, nhiều câu), V24 lịch học, V25 đơn xin nghỉ, V26 tự chấm lại khi lỗi máy chấm, V27 hàng đợi sự kiện realtime của máy chấm riêng, V28 giám sát bài kiểm tra
+└── static/            frontend build (AdminLTE / Next export) đặt ở đây
 ```
 
 ## 3. Quy ước chung (cả nhóm phải theo)
@@ -349,8 +359,8 @@ GRANT ALL ON lms_restore_test.* TO 'lms'@'localhost';
 **Lịch chạy** (Task Scheduler, chạy khi user đang đăng nhập):
 
 ```
-schtasks /Create /TN "LMS backup" /SC DAILY /ST 23:00 /TR "powershell -NoProfile -ExecutionPolicy Bypass -File F:\LMS\lms_server\scripts\backup.ps1 -OutDir D:\lms-backups"
-schtasks /Create /TN "LMS restore test" /SC WEEKLY /D SUN /ST 23:30 /TR "powershell -NoProfile -ExecutionPolicy Bypass -File F:\LMS\lms_server\scripts\test-restore.ps1 -BackupDir D:\lms-backups"
+schtasks /Create /TN "LMS backup" /SC DAILY /ST 23:00 /TR "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\backup.ps1 -OutDir D:\lms-backups"
+schtasks /Create /TN "LMS restore test" /SC WEEKLY /D SUN /ST 23:30 /TR "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\test-restore.ps1 -BackupDir D:\lms-backups"
 ```
 
 **Khôi phục khi có sự cố:**
@@ -365,19 +375,3 @@ schtasks /Create /TN "LMS restore test" /SC WEEKLY /D SUN /ST 23:30 /TR "powersh
 - `.env` không nằm trong backup: cất riêng.
 - Code cần thêm bảng có file trên đĩa thì cập nhật truy vấn trong `Get-StorageReport` (`scripts/lms-common.ps1`).
 
-## 8. Việc tiếp theo (gợi ý)
-
-- [ ] P5/P6: build frontend vào `src/main/resources/static/` rồi xóa `dev-console.html`.
-- [ ] Integration test với Testcontainers MySQL (login, revoke, permission boundary).
-- [ ] Rate limit cho endpoint import.
-- [x] Giai đoạn 2: module `course/` (V4): khóa học, mục/tuần, tài liệu, bài kiểm tra, ghi danh 3 cách.
-- [x] Giai đoạn 2: bài học (V5): nội dung văn bản + tài liệu đính kèm trong từng mục/tuần.
-- [x] Giai đoạn 2: sửa thông tin khóa học, đổi tên/sắp xếp mục, sắp xếp bài học, sửa bài (trừ bài thi đã kết thúc).
-- [x] Giai đoạn 2: backup/restore (`scripts/`): DB + thư mục file, kiểm tra checksum. Còn chạy thử `test-restore.ps1`.
-- [x] Giai đoạn 2: `submission/` (V7): sinh viên làm bài kiểm tra, nộp file.
-- [x] Giai đoạn 2: chấm điểm thủ công (V8): giảng viên xem bài nộp, chấm điểm + nhận xét; sinh viên xem điểm.
-- [x] Giai đoạn 2: thông báo (V9), tiến độ học (V10, `progress/`).
-- [x] Giai đoạn 2: `report/`: bảng điểm CSV (`GET /teacher/courses/{id}/gradebook.csv`), ZIP bài đã nộp
-  (`GET /teacher/courses/{id}/assessments/{aid}/submissions.zip`).
-- [x] Giai đoạn 2: audit mọi thao tác thay đổi dữ liệu (trừ đánh dấu đã học, đã đọc thông báo);
-  `GET /admin/audit?category=&q=` và trang `/admin/audit/`.

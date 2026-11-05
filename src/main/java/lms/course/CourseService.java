@@ -356,11 +356,13 @@ public class CourseService {
         // Số câu: bài trắc nghiệm đếm câu hỏi, bài lập trình đếm câu (đề)
         Map<Long, Long> questionCounts = new HashMap<>();
         List<Long> ids = assessmentList.stream().map(Assessment::getId).toList();
-        if (assessmentList.stream().anyMatch(Assessment::isQuiz)) {
+        // Bài tổng hợp: số câu trắc nghiệm (thẻ bài hiện các phần theo điểm tối đa)
+        if (assessmentList.stream().anyMatch(Assessment::usesQuiz)) {
             quizQuestions.countByAssessmentIds(ids).forEach(r -> questionCounts.put((Long) r[0], (Long) r[1]));
         }
-        if (assessmentList.stream().anyMatch(Assessment::isCode)) {
-            assessments.countCodeProblems(ids).forEach(r -> questionCounts.put((Long) r[0], (Long) r[1]));
+        List<Long> codeIds = assessmentList.stream().filter(Assessment::isCode).map(Assessment::getId).toList();
+        if (!codeIds.isEmpty()) {
+            assessments.countCodeProblems(codeIds).forEach(r -> questionCounts.put((Long) r[0], (Long) r[1]));
         }
         List<AssessmentView> assessmentViews = assessmentList.stream()
                 .map(a -> {
