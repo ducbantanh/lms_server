@@ -60,9 +60,10 @@ ENV PORT=8080
 ENV APP_PORT=8080
 ENV APP_PROFILE=prod
 ENV APP_JUDGE_SANDBOX=local
+ENV APP_JUDGE_WORKERS=1
 ENV APP_STORAGE_DIR=data/files
 ENV APP_JUDGE_WORK_DIR=data/judge
 
 EXPOSE 8080
 
-ENTRYPOINT ["sh", "-c", "java -Dserver.port=${PORT:-8080} -Djava.security.egd=file:/dev/./urandom -jar app.jar"]
+ENTRYPOINT ["sh", "-c", "java -XX:+UseSerialGC -Xms96m -Xmx192m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=64m -XX:CICompilerCount=2 -Dserver.port=${PORT:-8080} -Djava.security.egd=file:/dev/./urandom -jar app.jar"]
